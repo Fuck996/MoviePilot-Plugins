@@ -36,7 +36,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.8"
+    plugin_version = "0.3.9"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -429,6 +429,7 @@ class MediaLibraryKeeper(_PluginBase):
             "library_names": [],
             "cleanup_libraries": [],
             "cleanup_operator": "and",
+            "cleanup_watch_state": "any",
             "cleanup_unwatched_days": 0,
             "cleanup_watched": False,
             "cleanup_min_size_gb": 0,
@@ -439,14 +440,20 @@ class MediaLibraryKeeper(_PluginBase):
     def _normalize_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
         defaults = cls._default_config()
         normalized = {**defaults, **(config or {})}
-        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source", "cleanup_watched"]:
-            normalized[key] = bool(normalized.get(key, defaults[key]))
+        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source"]:
+            normalized[key] = cls._to_bool(normalized.get(key, defaults[key]))
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
         normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
         normalized["cleanup_operator"] = cls._clean_text(normalized.get("cleanup_operator")).lower()
         if normalized["cleanup_operator"] not in {"and", "or"}:
             normalized["cleanup_operator"] = "and"
+        raw_config = config or {}
+        watch_state = cls._clean_text(raw_config.get("cleanup_watch_state")).lower()
+        if watch_state not in {"any", "watched", "unwatched"}:
+            watch_state = "watched" if cls._to_bool(raw_config.get("cleanup_watched")) else "any"
+        normalized["cleanup_watch_state"] = watch_state
+        normalized["cleanup_watched"] = watch_state == "watched"
         normalized["cleanup_unwatched_days"] = max(cls._to_int(normalized.get("cleanup_unwatched_days"), 0), 0)
         normalized["cleanup_min_size_gb"] = max(cls._to_int(normalized.get("cleanup_min_size_gb"), 0), 0)
         normalized["cleanup_max_rating"] = max(cls._to_float(normalized.get("cleanup_max_rating"), 0), 0)
@@ -461,6 +468,14 @@ class MediaLibraryKeeper(_PluginBase):
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item or "").strip()]
         return []
+
+    @staticmethod
+    def _to_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
 
     @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
@@ -899,8 +914,11 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _matches_cleanup_conditions(self, item: Dict[str, Any]) -> bool:
         checks = []
-        if self._config.get("cleanup_watched"):
+        watch_state = self._config.get("cleanup_watch_state")
+        if watch_state == "watched":
             checks.append(bool(item.get("watched")))
+        elif watch_state == "unwatched":
+            checks.append(not bool(item.get("watched")))
         days = int(self._config.get("cleanup_unwatched_days") or 0)
         if days > 0:
             checks.append(self._inactive_days(item) >= days)
@@ -919,8 +937,9 @@ class MediaLibraryKeeper(_PluginBase):
         return {
             "libraries": self._config.get("cleanup_libraries") or [],
             "operator": self._config.get("cleanup_operator"),
+            "watch_state": self._config.get("cleanup_watch_state"),
             "unwatched_days": self._config.get("cleanup_unwatched_days"),
-            "watched": self._config.get("cleanup_watched"),
+            "watched": self._config.get("cleanup_watch_state") == "watched",
             "min_size_gb": self._config.get("cleanup_min_size_gb"),
             "max_rating": self._config.get("cleanup_max_rating"),
         }

@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, u as unwrapResponse, a as toPayloadConfig, r as readStatusCache, w as writeStatusCache } from './_plugin-vue_export-helper-HIHtRJl9.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, u as unwrapResponse, a as toPayloadConfig, r as readStatusCache, w as writeStatusCache } from './_plugin-vue_export-helper-BwFQ4IX3.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers} = await importShared('vue');
 
@@ -192,6 +192,11 @@ const sortOptions = [
   { title: '最后观看日期', value: 'last_watched_at' },
   { title: '大小', value: 'size' },
   { title: '评分', value: 'rating' },
+];
+const cleanupWatchStateOptions = [
+  { title: '不限制', value: 'any' },
+  { title: '已看完', value: 'watched' },
+  { title: '未看完', value: 'unwatched' },
 ];
 const pageSizeOptions = [50, 100, 500, 1000];
 
@@ -1281,9 +1286,17 @@ return (_ctx, _cache) => {
                   { title: '任一满足', value: 'or' },
                 ]
                     }, null, 8, ["modelValue"]),
+                    _createVNode(_component_VSelect, {
+                      modelValue: configDraft.value.cleanup_watch_state,
+                      "onUpdate:modelValue": _cache[21] || (_cache[21] = $event => ((configDraft.value.cleanup_watch_state) = $event)),
+                      label: "观看状态",
+                      items: cleanupWatchStateOptions,
+                      hint: "不限制表示不启用该条件",
+                      "persistent-hint": ""
+                    }, null, 8, ["modelValue"]),
                     _createVNode(_component_VTextField, {
                       modelValue: configDraft.value.cleanup_unwatched_days,
-                      "onUpdate:modelValue": _cache[21] || (_cache[21] = $event => ((configDraft.value.cleanup_unwatched_days) = $event)),
+                      "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((configDraft.value.cleanup_unwatched_days) = $event)),
                       modelModifiers: { number: true },
                       type: "number",
                       min: "0",
@@ -1293,7 +1306,7 @@ return (_ctx, _cache) => {
                     }, null, 8, ["modelValue"]),
                     _createVNode(_component_VTextField, {
                       modelValue: configDraft.value.cleanup_min_size_gb,
-                      "onUpdate:modelValue": _cache[22] || (_cache[22] = $event => ((configDraft.value.cleanup_min_size_gb) = $event)),
+                      "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((configDraft.value.cleanup_min_size_gb) = $event)),
                       modelModifiers: { number: true },
                       type: "number",
                       min: "0",
@@ -1303,7 +1316,7 @@ return (_ctx, _cache) => {
                     }, null, 8, ["modelValue"]),
                     _createVNode(_component_VTextField, {
                       modelValue: configDraft.value.cleanup_max_rating,
-                      "onUpdate:modelValue": _cache[23] || (_cache[23] = $event => ((configDraft.value.cleanup_max_rating) = $event)),
+                      "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((configDraft.value.cleanup_max_rating) = $event)),
                       modelModifiers: { number: true },
                       type: "number",
                       min: "0",
@@ -1313,13 +1326,6 @@ return (_ctx, _cache) => {
                       "persistent-hint": ""
                     }, null, 8, ["modelValue"])
                   ]),
-                  _createVNode(_component_VSwitch, {
-                    modelValue: configDraft.value.cleanup_watched,
-                    "onUpdate:modelValue": _cache[24] || (_cache[24] = $event => ((configDraft.value.cleanup_watched) = $event)),
-                    color: "primary",
-                    inset: "",
-                    label: "条件包含已观看"
-                  }, null, 8, ["modelValue"]),
                   _createElementVNode("div", _hoisted_52, [
                     _createVNode(_component_VBtn, {
                       "prepend-icon": "mdi-content-save",
@@ -1587,6 +1593,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7c495cb8"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-b1a55ff3"]]);
 
 export { AppPage as default };

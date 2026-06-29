@@ -95,6 +95,11 @@ const sortOptions = [
   { title: '大小', value: 'size' },
   { title: '评分', value: 'rating' },
 ]
+const cleanupWatchStateOptions = [
+  { title: '不限制', value: 'any' },
+  { title: '已看完', value: 'watched' },
+  { title: '未看完', value: 'unwatched' },
+]
 const pageSizeOptions = [50, 100, 500, 1000]
 
 const filteredMediaRows = computed(() => {
@@ -718,11 +723,17 @@ onMounted(() => {
                   { title: '任一满足', value: 'or' },
                 ]"
               />
+              <VSelect
+                v-model="configDraft.cleanup_watch_state"
+                label="观看状态"
+                :items="cleanupWatchStateOptions"
+                hint="不限制表示不启用该条件"
+                persistent-hint
+              />
               <VTextField v-model.number="configDraft.cleanup_unwatched_days" type="number" min="0" label="超过多少天未观看" hint="0 表示不启用" persistent-hint />
               <VTextField v-model.number="configDraft.cleanup_min_size_gb" type="number" min="0" label="大小超过 GB" hint="0 表示不启用" persistent-hint />
               <VTextField v-model.number="configDraft.cleanup_max_rating" type="number" min="0" step="0.1" label="评分低于/等于" hint="0 表示不启用" persistent-hint />
             </div>
-            <VSwitch v-model="configDraft.cleanup_watched" color="primary" inset label="条件包含已观看" />
             <div class="mlk-settings-actions">
               <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
                 保存设置

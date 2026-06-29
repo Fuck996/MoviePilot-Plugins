@@ -20,6 +20,7 @@ export function createDefaultConfig() {
     library_names: [],
     cleanup_libraries: [],
     cleanup_operator: 'and',
+    cleanup_watch_state: 'any',
     cleanup_unwatched_days: 0,
     cleanup_watched: false,
     cleanup_min_size_gb: 0,
@@ -50,7 +51,12 @@ export function writeStatusCache(pluginId, status) {
 }
 
 export function cloneConfig(config) {
-  return JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }))
+  const cloned = JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }))
+  if (!['any', 'watched', 'unwatched'].includes(cloned.cleanup_watch_state)) {
+    cloned.cleanup_watch_state = cloned.cleanup_watched ? 'watched' : 'any'
+  }
+  cloned.cleanup_watched = cloned.cleanup_watch_state === 'watched'
+  return cloned
 }
 
 export function toEditableConfig(config) {
@@ -65,6 +71,7 @@ export function toEditableConfig(config) {
 
 export function toPayloadConfig(config) {
   const cloned = cloneConfig(config)
+  cloned.cleanup_watched = cloned.cleanup_watch_state === 'watched'
   for (const key of ['library_names']) {
     if (typeof cloned[key] === 'string') {
       cloned[key] = cloned[key]
