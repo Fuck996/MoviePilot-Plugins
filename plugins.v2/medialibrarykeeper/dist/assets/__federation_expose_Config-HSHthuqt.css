@@ -1,11 +1,11 @@
 
-.mlk-config-body[data-v-42d602bf] {
+.mlk-config-body[data-v-fb27228e] {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px;
 }
-.mlk-config-grid[data-v-42d602bf] {
+.mlk-config-grid[data-v-fb27228e] {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;

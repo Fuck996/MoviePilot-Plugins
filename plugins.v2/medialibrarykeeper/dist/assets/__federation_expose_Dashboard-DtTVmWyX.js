@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, f as formatNumber, b as formatBytes, u as unwrapResponse } from './_plugin-vue_export-helper-DyMs-RuR.js';
+import { _ as _export_sfc, f as formatNumber, b as formatBytes, u as unwrapResponse } from './_plugin-vue_export-helper-DBmJ-E3u.js';
 
 const {toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,unref:_unref,createTextVNode:_createTextVNode,withCtx:_withCtx,createVNode:_createVNode} = await importShared('vue');
 
@@ -46,6 +46,11 @@ const summary = computed(() => status.value.summary || {});
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`);
 const cardTitle = computed(() => props.config?.attrs?.title || '媒体库管家');
 const cardSubtitle = computed(() => props.config?.attrs?.subtitle || '空间风险与清理建议');
+const statusText = computed(() => {
+  if (summary.value.disk_warning) return '磁盘容量紧张，请查看清理建议'
+  if (summary.value.last_scan_at) return `最近扫描：${summary.value.last_scan_at}`
+  return '尚未扫描媒体库'
+});
 
 async function loadStatus() {
   loading.value = true;
@@ -99,15 +104,15 @@ return (_ctx, _cache) => {
         ])
       ]),
       _createVNode(_component_VAlert, {
-        type: "info",
+        type: summary.value.disk_warning ? 'warning' : 'info',
         variant: "tonal",
         density: "compact"
       }, {
-        default: _withCtx(() => [...(_cache[3] || (_cache[3] = [
-          _createTextVNode("等待接入 Emby 扫描", -1)
-        ]))]),
+        default: _withCtx(() => [
+          _createTextVNode(_toDisplayString(statusText.value), 1)
+        ]),
         _: 1
-      })
+      }, 8, ["type"])
     ]),
     _: 1
   }))
@@ -115,6 +120,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Dashboard = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-6bda5f1d"]]);
+const Dashboard = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f3bed697"]]);
 
 export { Dashboard as default };

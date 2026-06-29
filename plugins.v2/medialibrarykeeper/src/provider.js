@@ -16,7 +16,9 @@ export function createDefaultConfig() {
     scan_cron: '0 */6 * * *',
     ai_suggestions: false,
     default_delete_source: false,
+    mediaservers: [],
     library_names: [],
+    storage_paths: [],
   }
 }
 
@@ -26,19 +28,23 @@ export function cloneConfig(config) {
 
 export function toEditableConfig(config) {
   const cloned = cloneConfig(config)
-  if (Array.isArray(cloned.library_names)) {
-    cloned.library_names = cloned.library_names.join('\n')
+  for (const key of ['library_names', 'storage_paths']) {
+    if (Array.isArray(cloned[key])) {
+      cloned[key] = cloned[key].join('\n')
+    }
   }
   return cloned
 }
 
 export function toPayloadConfig(config) {
   const cloned = cloneConfig(config)
-  if (typeof cloned.library_names === 'string') {
-    cloned.library_names = cloned.library_names
-      .split('\n')
-      .map(item => item.trim())
-      .filter(Boolean)
+  for (const key of ['library_names', 'storage_paths']) {
+    if (typeof cloned[key] === 'string') {
+      cloned[key] = cloned[key]
+        .split('\n')
+        .map(item => item.trim())
+        .filter(Boolean)
+    }
   }
   return cloned
 }
@@ -66,7 +72,6 @@ export function planItemFromMedia(item) {
     id: item.id,
     title: item.title,
     type: item.type,
-    season: item.season,
     watched: item.watched,
     size: item.size,
   }

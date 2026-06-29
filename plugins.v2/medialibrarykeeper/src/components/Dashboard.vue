@@ -28,6 +28,11 @@ const summary = computed(() => status.value.summary || {})
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
 const cardTitle = computed(() => props.config?.attrs?.title || '媒体库管家')
 const cardSubtitle = computed(() => props.config?.attrs?.subtitle || '空间风险与清理建议')
+const statusText = computed(() => {
+  if (summary.value.disk_warning) return '磁盘容量紧张，请查看清理建议'
+  if (summary.value.last_scan_at) return `最近扫描：${summary.value.last_scan_at}`
+  return '尚未扫描媒体库'
+})
 
 async function loadStatus() {
   loading.value = true
@@ -65,7 +70,9 @@ onMounted(loadStatus)
         <div class="text-h6">{{ formatBytes(summary.estimated_reclaim_size) }}</div>
       </div>
     </div>
-    <VAlert type="info" variant="tonal" density="compact">等待接入 Emby 扫描</VAlert>
+    <VAlert :type="summary.disk_warning ? 'warning' : 'info'" variant="tonal" density="compact">
+      {{ statusText }}
+    </VAlert>
   </VSheet>
 </template>
 
