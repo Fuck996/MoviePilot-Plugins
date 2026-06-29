@@ -85,7 +85,7 @@ onMounted(async () => {
         rows="3"
       />
       <VAlert type="info" variant="tonal" density="comfortable">
-        磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。
+        磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。
       </VAlert>
       <VSwitch v-model="config.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
       <VSwitch v-model="config.default_delete_source" color="error" inset label="默认同时删除源文件" />

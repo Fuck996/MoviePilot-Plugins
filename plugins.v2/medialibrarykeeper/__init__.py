@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.2.3"
+    plugin_version = "0.3.0"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -133,173 +133,7 @@ class MediaLibraryKeeper(_PluginBase):
         return "vue", "dist/assets"
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        media_server_options = self._media_server_options()
-        return [
-            {
-                "component": "VForm",
-                "content": [
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 3},
-                                "content": [
-                                    {"component": "VSwitch", "props": {"model": "enabled", "label": "启用插件"}}
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 3},
-                                "content": [
-                                    {"component": "VSwitch", "props": {"model": "show_sidebar_nav", "label": "显示侧边栏入口"}}
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 3},
-                                "content": [
-                                    {"component": "VSwitch", "props": {"model": "notify_enabled", "label": "启用通知"}}
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 3},
-                                "content": [
-                                    {"component": "VSwitch", "props": {"model": "disk_warning_enabled", "label": "启用磁盘容量告警"}}
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VSelect",
-                                        "props": {
-                                            "model": "mediaservers",
-                                            "label": "媒体服务器",
-                                            "items": media_server_options,
-                                            "multiple": True,
-                                            "chips": True,
-                                            "clearable": True,
-                                            "hint": "留空表示扫描所有 Emby 媒体服务器。",
-                                            "persistent-hint": True,
-                                            "disabled": not bool(media_server_options),
-                                        },
-                                    }
-                                ],
-                            }
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "disk_warning_free_gb",
-                                            "label": "剩余容量阈值 GB",
-                                            "type": "number",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "disk_warning_free_percent",
-                                            "label": "剩余比例阈值 %",
-                                            "type": "number",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {"component": "VTextField", "props": {"model": "scan_cron", "label": "扫描周期 Cron"}}
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextarea",
-                                        "props": {
-                                            "model": "library_names",
-                                            "label": "限定媒体库名称",
-                                            "hint": "每行一个媒体库名称，留空表示全部媒体库。",
-                                            "persistent-hint": True,
-                                            "auto-grow": True,
-                                            "rows": 3,
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "variant": "tonal",
-                                            "text": "磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {"model": "ai_suggestions", "label": "允许 AI 参与清理建议排序", "disabled": True},
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {"model": "default_delete_source", "label": "默认同时删除源文件"},
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                ],
-            }
-        ], self._config
+        return [], self._config
 
     def get_page(self) -> List[dict]:
         return []
@@ -349,6 +183,7 @@ class MediaLibraryKeeper(_PluginBase):
             data={
                 "config": self._config,
                 "summary": self._build_summary(snapshot),
+                "libraries": snapshot.get("libraries", []),
                 "media": snapshot.get("media", []),
                 "recommendations": self._build_recommendations(snapshot),
                 "pending_plan": self.get_data(self.DATA_KEY_PENDING_PLAN) or None,
@@ -382,6 +217,7 @@ class MediaLibraryKeeper(_PluginBase):
         if not services:
             raise RuntimeError("没有可用的 Emby 媒体服务器，请先在 MoviePilot 媒体服务器中完成配置。")
 
+        libraries: List[Dict[str, Any]] = []
         media: List[Dict[str, Any]] = []
         errors: List[str] = []
         for server_name, service_info in services.items():
@@ -392,13 +228,17 @@ class MediaLibraryKeeper(_PluginBase):
                     errors.append(f"{server_name} 未返回用户信息")
                     continue
                 user_id = users[0].get("Id")
-                media.extend(self._fetch_emby_items(service, service_info, server_name, user_id))
+                server_libraries = self._fetch_emby_libraries(service, service_info, server_name, user_id)
+                libraries.extend(server_libraries)
+                library_index = {item["item_id"]: item for item in server_libraries if item.get("item_id")}
+                media.extend(self._fetch_emby_items(service, service_info, server_name, user_id, library_index))
             except Exception as err:
                 logger.error(f"媒体库管家读取 Emby {server_name} 失败：{err}")
                 errors.append(f"{server_name}: {err}")
 
         snapshot = {
             "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "libraries": self._dedupe_libraries(libraries),
             "media": self._dedupe_media(media),
             "errors": errors,
         }
@@ -544,13 +384,32 @@ class MediaLibraryKeeper(_PluginBase):
         data = response.json() if hasattr(response, "json") else response
         return data if isinstance(data, list) else []
 
-    def _fetch_emby_items(self, service: Any, service_info: Any, server_name: str, user_id: str) -> List[Dict[str, Any]]:
+    def _fetch_emby_libraries(self, service: Any, service_info: Any, server_name: str, user_id: str) -> List[Dict[str, Any]]:
+        response = service.get_data(f"[HOST]emby/Users/{user_id}/Views?api_key=[APIKEY]")
+        data = response.json() if hasattr(response, "json") else response
+        raw_items = data.get("Items") if isinstance(data, dict) else []
+        libraries = []
+        for item in raw_items:
+            library = self._normalize_emby_library(item, service_info, server_name)
+            if library and self._accept_library_name(library.get("title")):
+                libraries.append(library)
+        return libraries
+
+    def _fetch_emby_items(
+        self,
+        service: Any,
+        service_info: Any,
+        server_name: str,
+        user_id: str,
+        library_index: Dict[str, Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
         start = 0
         limit = 200
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
-            "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources"
+            "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
+            "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags"
         )
         while True:
             url = (
@@ -564,7 +423,26 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
-                normalized = self._normalize_emby_item(item, service_info, server_name)
+                normalized = self._normalize_emby_item(item, service_info, server_name, library_index)
+                if not normalized:
+                    continue
+                if normalized.get("type") == "series":
+                    stats = self._fetch_series_episode_stats(service, user_id, normalized.get("item_id"))
+                    if stats:
+                        normalized["total_episodes"] = stats["total_episodes"] or normalized.get("total_episodes", 0)
+                        normalized["watched_episodes"] = stats["watched_episodes"]
+                        normalized["size"] = stats["size"] or normalized.get("size", 0)
+                        normalized["episode_paths"] = stats["paths"]
+                        normalized["watched"] = (
+                            normalized["total_episodes"] > 0
+                            and normalized["watched_episodes"] >= normalized["total_episodes"]
+                        )
+                        normalized["progress"] = self._progress_text(
+                            normalized["watched_episodes"],
+                            normalized["total_episodes"],
+                            True,
+                            normalized["watched"],
+                        )
                 if self._accept_library(normalized):
                     items.append(normalized)
             if len(raw_items) < limit:
@@ -572,8 +450,66 @@ class MediaLibraryKeeper(_PluginBase):
             start += limit
         return items
 
-    def _normalize_emby_item(self, item: Dict[str, Any], service_info: Any, server_name: str) -> Dict[str, Any]:
+    def _fetch_series_episode_stats(self, service: Any, user_id: str, series_id: Any) -> Dict[str, Any]:
+        item_id = self._clean_text(series_id)
+        if not item_id:
+            return {}
+        total = 0
+        watched = 0
+        size = 0
+        paths = []
+        start = 0
+        limit = 500
+        fields = quote("Path,MediaSources,UserData")
+        while True:
+            url = (
+                f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(item_id)}&Recursive=true&IncludeItemTypes=Episode"
+                f"&Fields={fields}&EnableTotalRecordCount=false&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
+            )
+            response = service.get_data(url)
+            data = response.json() if hasattr(response, "json") else response
+            raw_items = data.get("Items") if isinstance(data, dict) else []
+            if not raw_items:
+                break
+            total += len(raw_items)
+            for episode in raw_items:
+                if (episode.get("UserData") or {}).get("Played"):
+                    watched += 1
+                path = self._clean_text(episode.get("Path"))
+                if path:
+                    paths.append(path)
+                size += self._media_sources_size(episode.get("MediaSources") or [])
+            if len(raw_items) < limit:
+                break
+            start += limit
+        return {"total_episodes": total, "watched_episodes": watched, "size": size, "paths": paths}
+
+    def _normalize_emby_library(self, item: Dict[str, Any], service_info: Any, server_name: str) -> Dict[str, Any]:
+        item_id = self._clean_text(item.get("Id"))
+        title = self._clean_text(item.get("Name"))
+        collection_type = self._clean_text(item.get("CollectionType"))
+        if not item_id or not title:
+            return {}
+        return {
+            "id": f"{server_name}:{item_id}",
+            "server": server_name,
+            "item_id": item_id,
+            "title": title,
+            "type": collection_type,
+            "type_label": self._library_type_label(collection_type),
+            "image_url": self._build_image_url(item, service_info, max_height=360, max_width=640),
+        }
+
+    def _normalize_emby_item(
+        self,
+        item: Dict[str, Any],
+        service_info: Any,
+        server_name: str,
+        library_index: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, Any]:
         item_type = self._clean_text(item.get("Type")).lower()
+        if item_type not in {"movie", "series"}:
+            return {}
         is_series = item_type == "series"
         user_data = item.get("UserData") or {}
         total_episodes = self._to_int(item.get("RecursiveItemCount") or item.get("ChildCount"), 0) if is_series else 1
@@ -581,6 +517,8 @@ class MediaLibraryKeeper(_PluginBase):
         watched_episodes = max(total_episodes - unplayed, 0) if is_series else (1 if user_data.get("Played") else 0)
         watched = bool(user_data.get("Played")) or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
         path = self._clean_text(item.get("Path"))
+        library = library_index.get(self._clean_text(item.get("ParentId"))) or {}
+        library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         return {
             "id": f"{server_name}:{item.get('Id')}",
             "server": server_name,
@@ -590,11 +528,17 @@ class MediaLibraryKeeper(_PluginBase):
             "type": "series" if is_series else "movie",
             "type_label": "剧集" if is_series else "电影",
             "year": item.get("ProductionYear"),
-            "library": self._clean_text(item.get("CollectionType") or item.get("ParentName")),
+            "library": library_name,
+            "library_id": library.get("id") or "",
+            "library_item_id": library.get("item_id") or "",
+            "library_type": library.get("type") or "",
             "path": path,
             "path_preview": self._path_preview(path),
             "rating": item.get("CommunityRating") or item.get("CriticRating"),
             "image_url": self._build_image_url(item, service_info),
+            "overview": self._clean_text(item.get("Overview")),
+            "genres": [self._clean_text(genre) for genre in item.get("Genres") or [] if self._clean_text(genre)],
+            "premiere_date": self._format_emby_date(item.get("PremiereDate"))[:10],
             "provider_ids": item.get("ProviderIds") or {},
             "added_at": self._format_emby_date(item.get("DateCreated")),
             "watched": watched,
@@ -602,23 +546,40 @@ class MediaLibraryKeeper(_PluginBase):
             "watched_episodes": watched_episodes,
             "total_episodes": total_episodes,
             "size": self._media_sources_size(item.get("MediaSources") or []),
+            "episode_paths": [],
         }
 
     def _accept_library(self, item: Dict[str, Any]) -> bool:
+        return self._accept_library_name(item.get("library"))
+
+    def _accept_library_name(self, library_name: Any) -> bool:
         library_names = self._config.get("library_names") or []
         if not library_names:
             return True
-        library = self._clean_text(item.get("library"))
+        library = self._clean_text(library_name)
         return any(name == library for name in library_names)
 
-    def _build_image_url(self, item: Dict[str, Any], service_info: Any) -> str:
+    def _build_image_url(self, item: Dict[str, Any], service_info: Any, max_height: int = 500, max_width: int = 340) -> str:
         if not (item.get("ImageTags") or {}).get("Primary"):
             return ""
         base_url = self._service_base_url(service_info)
         if not base_url:
             return ""
         item_id = quote(str(item.get("Id")))
-        return f"{base_url.rstrip('/')}/emby/Items/{item_id}/Images/Primary?maxHeight=360&maxWidth=240&quality=90"
+        return f"{base_url.rstrip('/')}/emby/Items/{item_id}/Images/Primary?maxHeight={max_height}&maxWidth={max_width}&quality=90"
+
+    @staticmethod
+    def _library_type_label(collection_type: str) -> str:
+        return {
+            "movies": "电影",
+            "tvshows": "电视剧",
+            "mixed": "混合媒体",
+            "music": "音乐",
+            "musicvideos": "音乐视频",
+            "homevideos": "家庭视频",
+            "boxsets": "合集",
+            "books": "图书",
+        }.get(collection_type, "媒体库")
 
     @staticmethod
     def _service_base_url(service_info: Any) -> str:
@@ -668,6 +629,14 @@ class MediaLibraryKeeper(_PluginBase):
             if key:
                 deduped[key] = item
         return sorted(deduped.values(), key=lambda item: (item.get("watched") is False, item.get("added_at") or ""))
+
+    def _dedupe_libraries(self, libraries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped = {}
+        for item in libraries:
+            key = item.get("id")
+            if key:
+                deduped[key] = item
+        return sorted(deduped.values(), key=lambda item: (item.get("server") or "", item.get("title") or ""))
 
     def _build_plan_item(self, media: Dict[str, Any], delete_source: bool) -> Dict[str, Any]:
         records = self._match_transfer_records(media)
@@ -887,11 +856,12 @@ class MediaLibraryKeeper(_PluginBase):
     def _build_summary(self, snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         snapshot = snapshot or self._load_snapshot()
         media = snapshot.get("media", [])
+        libraries = snapshot.get("libraries", [])
         movies = [item for item in media if item.get("type") == "movie"]
         series = [item for item in media if item.get("type") == "series"]
         disk_status = self._disk_status(snapshot)
         return {
-            "libraries": len({item.get("library") for item in media if item.get("library")}),
+            "libraries": len(libraries) or len({item.get("library") for item in media if item.get("library")}),
             "movies": len(movies),
             "series": len(series),
             "episodes": sum(int(item.get("total_episodes") or 0) for item in series),
@@ -941,7 +911,11 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _media_disk_paths(self, snapshot: Optional[Dict[str, Any]] = None) -> List[str]:
         snapshot = snapshot or self._load_snapshot()
-        paths = [item.get("path") for item in snapshot.get("media", []) if item.get("path")]
+        paths = []
+        for item in snapshot.get("media", []):
+            if item.get("path"):
+                paths.append(item.get("path"))
+            paths.extend(item.get("episode_paths") or [])
         if not paths:
             value = getattr(settings, "LIBRARY_PATH", "")
             if value:

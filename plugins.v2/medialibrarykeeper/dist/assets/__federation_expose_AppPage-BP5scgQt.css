@@ -1,0 +1,181 @@
+
+.mlk-page[data-v-5358887e] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+.mlk-header[data-v-5358887e],
+.mlk-toolbar[data-v-5358887e],
+.mlk-plan-bar[data-v-5358887e],
+.mlk-plan-title[data-v-5358887e],
+.mlk-danger-actions[data-v-5358887e],
+.mlk-disk-row[data-v-5358887e],
+.mlk-detail-head[data-v-5358887e],
+.mlk-detail-actions[data-v-5358887e],
+.mlk-chip-row[data-v-5358887e],
+.mlk-filter-row[data-v-5358887e] {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mlk-header[data-v-5358887e],
+.mlk-toolbar[data-v-5358887e],
+.mlk-plan-bar[data-v-5358887e],
+.mlk-filter-row[data-v-5358887e] {
+  flex-wrap: wrap;
+}
+.mlk-stats[data-v-5358887e],
+.mlk-capability-grid[data-v-5358887e],
+.mlk-form-grid[data-v-5358887e],
+.mlk-switch-grid[data-v-5358887e],
+.mlk-disk-grid[data-v-5358887e] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.mlk-library-grid[data-v-5358887e] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.mlk-media-grid[data-v-5358887e] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+.mlk-stat-card[data-v-5358887e],
+.mlk-capability[data-v-5358887e],
+.mlk-plan-bar[data-v-5358887e],
+.mlk-plan-detail[data-v-5358887e],
+.mlk-disk-row[data-v-5358887e] {
+  padding: 16px;
+}
+.mlk-stat-card[data-v-5358887e],
+.mlk-capability[data-v-5358887e] {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mlk-panel[data-v-5358887e] {
+  overflow: hidden;
+}
+.mlk-section[data-v-5358887e] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+.mlk-toolbar[data-v-5358887e] > * {
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+.mlk-library-card[data-v-5358887e],
+.mlk-media-card[data-v-5358887e] {
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+.mlk-library-card[data-v-5358887e]:hover,
+.mlk-media-card[data-v-5358887e]:hover {
+  border-color: rgb(var(--v-theme-primary));
+  transform: translateY(-2px);
+}
+.mlk-library-image[data-v-5358887e],
+.mlk-library-fallback[data-v-5358887e] {
+  height: 126px;
+}
+.mlk-library-fallback[data-v-5358887e],
+.mlk-poster-fallback[data-v-5358887e] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+.mlk-library-meta[data-v-5358887e],
+.mlk-media-body[data-v-5358887e] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.mlk-chip-row[data-v-5358887e] {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mlk-poster[data-v-5358887e] {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+.mlk-select-btn[data-v-5358887e] {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.mlk-media-title[data-v-5358887e] {
+  min-height: 40px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.mlk-plan-detail[data-v-5358887e] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mlk-danger-actions[data-v-5358887e],
+.mlk-detail-actions[data-v-5358887e] {
+  justify-content: flex-end;
+}
+.mlk-disk-row[data-v-5358887e] {
+  justify-content: space-between;
+}
+.mlk-settings[data-v-5358887e] {
+  max-width: 960px;
+}
+.mlk-detail-layout[data-v-5358887e] {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: 520px;
+}
+.mlk-detail-poster[data-v-5358887e] {
+  min-height: 520px;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+.mlk-detail-content[data-v-5358887e] {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+.mlk-detail-head[data-v-5358887e] {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.mlk-overview[data-v-5358887e] {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.mlk-detail-grid[data-v-5358887e] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.mlk-detail-wide[data-v-5358887e] {
+  grid-column: 1 / -1;
+}
+@media (max-width: 720px) {
+.mlk-page[data-v-5358887e] {
+    padding: 12px;
+}
+.mlk-detail-layout[data-v-5358887e] {
+    grid-template-columns: 1fr;
+}
+.mlk-detail-poster[data-v-5358887e] {
+    min-height: 340px;
+}
+}

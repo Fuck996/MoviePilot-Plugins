@@ -172,7 +172,7 @@ return (_ctx, _cache) => {
         density: "comfortable"
       }, {
         default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
-          _createTextVNode(" 磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。 ", -1)
+          _createTextVNode(" 磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。 ", -1)
         ]))]),
         _: 1
       }),
@@ -197,6 +197,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7e7461ff"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-c5ebff03"]]);
 
 export { Config as default };

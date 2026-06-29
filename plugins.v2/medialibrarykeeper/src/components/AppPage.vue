@@ -38,6 +38,9 @@ const error = ref('')
 const notice = ref('')
 const activeTab = ref('overview')
 const selectedMedia = ref([])
+const selectedLibraryId = ref('')
+const selectedMediaDetail = ref(null)
+const detailDialog = ref(false)
 const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
@@ -48,6 +51,7 @@ const configDraft = ref(toEditableConfig())
 const status = ref({
   config: createDefaultConfig(),
   summary: {},
+  libraries: [],
   media: [],
   recommendations: [],
   pending_plan: null,
@@ -58,6 +62,7 @@ const status = ref({
 
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
 const summary = computed(() => status.value.summary || {})
+const libraries = computed(() => status.value.libraries || [])
 const mediaRows = computed(() => status.value.media || [])
 const recommendationRows = computed(() => status.value.recommendations || [])
 const pendingPlan = computed(() => status.value.pending_plan)
@@ -67,17 +72,38 @@ const mediaServerOptions = computed(() => status.value.media_server_options || [
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0))
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
+const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 
 const filteredMediaRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
   return mediaRows.value.filter((item) => {
-    if (keyword && !`${item.title || ''}${item.path_preview || ''}`.toLowerCase().includes(keyword)) return false
+    if (selectedLibraryId.value && item.library_id !== selectedLibraryId.value) return false
+    if (keyword) {
+      const haystack = `${item.title || ''}${item.overview || ''}${item.path_preview || ''}`.toLowerCase()
+      if (!haystack.includes(keyword)) return false
+    }
     if (typeFilter.value === '电影' && item.type !== 'movie') return false
     if (typeFilter.value === '剧集' && item.type !== 'series') return false
     if (watchFilter.value === '已看完' && !item.watched) return false
     if (watchFilter.value === '未看完' && item.watched) return false
     return true
   })
+})
+
+const libraryCards = computed(() => {
+  const counts = mediaRows.value.reduce((acc, item) => {
+    const key = item.library_id || 'unknown'
+    acc[key] = acc[key] || { total: 0, movies: 0, series: 0, size: 0 }
+    acc[key].total += 1
+    acc[key].size += Number(item.size || 0)
+    if (item.type === 'movie') acc[key].movies += 1
+    if (item.type === 'series') acc[key].series += 1
+    return acc
+  }, {})
+  return libraries.value.map(item => ({
+    ...item,
+    counts: counts[item.id] || { total: 0, movies: 0, series: 0, size: 0 },
+  }))
 })
 
 const statCards = computed(() => [
@@ -95,15 +121,6 @@ const capabilityLabels = {
   notification: '通知推送',
 }
 
-const mediaHeaders = [
-  { title: '媒体', key: 'title', minWidth: 260 },
-  { title: '类型', key: 'type_label', width: 92 },
-  { title: '评分', key: 'rating', width: 80 },
-  { title: '进度', key: 'progress', width: 110 },
-  { title: '体积', key: 'size', width: 110 },
-  { title: '入库时间', key: 'added_at', width: 168 },
-]
-
 const planHeaders = [
   { title: '媒体', key: 'title' },
   { title: '状态', key: 'status', width: 110 },
@@ -111,6 +128,38 @@ const planHeaders = [
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
 ]
+
+function isSelected(item) {
+  return selectedMedia.value.some(selected => selected.id === item.id)
+}
+
+function toggleSelected(item) {
+  if (isSelected(item)) {
+    selectedMedia.value = selectedMedia.value.filter(selected => selected.id !== item.id)
+    return
+  }
+  selectedMedia.value = [...selectedMedia.value, item]
+}
+
+function openLibrary(library) {
+  selectedLibraryId.value = library?.id || ''
+  activeTab.value = 'library'
+}
+
+function clearLibraryFilter() {
+  selectedLibraryId.value = ''
+}
+
+function openMediaDetail(item) {
+  selectedMediaDetail.value = item
+  detailDialog.value = true
+}
+
+async function createSinglePlan(item) {
+  selectedMedia.value = [item]
+  detailDialog.value = false
+  await createPlan()
+}
 
 async function loadStatus() {
   loading.value = true
@@ -159,7 +208,7 @@ async function scanLibrary() {
     }
     applyStatus(unwrapResponse(response))
     notice.value = '媒体库扫描完成'
-    activeTab.value = 'library'
+    activeTab.value = 'overview'
   } catch (err) {
     error.value = err?.message || '扫描媒体库失败'
   } finally {
@@ -239,7 +288,7 @@ onMounted(loadStatus)
     <div v-if="!hideTitle" class="mlk-header">
       <div>
         <div class="text-h5 font-weight-bold">媒体库管家</div>
-        <div class="text-body-2 text-medium-emphasis">Emby 媒体库整理、观看进度和空间释放</div>
+        <div class="text-body-2 text-medium-emphasis">按 Emby 媒体库入口管理观看进度和空间释放</div>
       </div>
       <VSpacer />
       <VBtn prepend-icon="mdi-database-sync-outline" variant="tonal" :loading="scanning" @click="scanLibrary">
@@ -281,12 +330,38 @@ onMounted(loadStatus)
       <VWindow v-model="activeTab" :touch="false">
         <VWindowItem value="overview">
           <div class="mlk-section">
+            <div v-if="libraryCards.length" class="mlk-library-grid">
+              <VSheet
+                v-for="library in libraryCards"
+                :key="library.id"
+                border
+                rounded
+                class="mlk-library-card"
+                @click="openLibrary(library)"
+              >
+                <VImg v-if="library.image_url" :src="library.image_url" cover class="mlk-library-image" />
+                <div v-else class="mlk-library-fallback">
+                  <VIcon icon="mdi-folder-multiple-image" size="42" />
+                </div>
+                <div class="mlk-library-meta">
+                  <div class="text-subtitle-1 font-weight-medium">{{ library.title }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ library.server }} · {{ library.type_label }}</div>
+                  <div class="mlk-chip-row">
+                    <VChip size="small" variant="tonal">{{ library.counts.movies }} 部电影</VChip>
+                    <VChip size="small" variant="tonal">{{ library.counts.series }} 部剧集</VChip>
+                    <VChip size="small" variant="tonal">{{ formatBytes(library.counts.size) }}</VChip>
+                  </div>
+                </div>
+              </VSheet>
+            </div>
+
             <div class="mlk-capability-grid">
               <VSheet v-for="(enabled, key) in capabilities" :key="key" border rounded class="mlk-capability">
                 <VIcon :icon="enabled ? 'mdi-check-circle-outline' : 'mdi-progress-wrench'" :color="enabled ? 'success' : 'warning'" />
                 <span>{{ capabilityLabels[key] || key }}</span>
               </VSheet>
             </div>
+
             <div class="mlk-disk-grid" v-if="summary.disk_status?.length">
               <VSheet v-for="disk in summary.disk_status" :key="disk.path" border rounded class="mlk-disk-row">
                 <div>
@@ -298,6 +373,7 @@ onMounted(loadStatus)
                 </VChip>
               </VSheet>
             </div>
+
             <VEmptyState
               v-if="!mediaRows.length"
               icon="mdi-database-search-outline"
@@ -310,59 +386,100 @@ onMounted(loadStatus)
         <VWindowItem value="library">
           <div class="mlk-section">
             <div class="mlk-toolbar">
-              <VTextField v-model="searchText" label="搜索名称或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
+              <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
               <VSelect v-model="watchFilter" label="观看状态" :items="['全部', '已看完', '未看完']" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
             </div>
-            <VDataTable
-              v-model="selectedMedia"
-              :headers="mediaHeaders"
-              :items="filteredMediaRows"
-              item-value="id"
-              show-select
-              return-object
-              density="comfortable"
-              class="mlk-table"
-            >
-              <template #item.title="{ item }">
-                <div class="mlk-media-cell">
-                  <VAvatar rounded size="46" color="surface-variant">
-                    <VImg v-if="item.image_url" :src="item.image_url" cover />
-                    <VIcon v-else :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" />
-                  </VAvatar>
-                  <div>
-                    <div class="font-weight-medium">{{ item.title }}</div>
-                    <div class="text-caption text-medium-emphasis">{{ item.path_preview || item.server }}</div>
+
+            <div class="mlk-filter-row">
+              <VChip
+                :color="!selectedLibraryId ? 'primary' : undefined"
+                :variant="!selectedLibraryId ? 'flat' : 'tonal'"
+                @click="clearLibraryFilter"
+              >
+                全部媒体库
+              </VChip>
+              <VChip
+                v-for="library in libraryCards"
+                :key="library.id"
+                :color="selectedLibraryId === library.id ? 'primary' : undefined"
+                :variant="selectedLibraryId === library.id ? 'flat' : 'tonal'"
+                @click="openLibrary(library)"
+              >
+                {{ library.title }}
+              </VChip>
+            </div>
+
+            <VAlert v-if="selectedLibrary" type="info" variant="tonal" density="compact">
+              当前入口：{{ selectedLibrary.title }}，共 {{ filteredMediaRows.length }} 个媒体条目。
+            </VAlert>
+
+            <div v-if="filteredMediaRows.length" class="mlk-media-grid">
+              <VSheet
+                v-for="item in filteredMediaRows"
+                :key="item.id"
+                border
+                rounded
+                class="mlk-media-card"
+                @click="openMediaDetail(item)"
+              >
+                <div class="mlk-poster">
+                  <VImg v-if="item.image_url" :src="item.image_url" cover />
+                  <div v-else class="mlk-poster-fallback">
+                    <VIcon :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="44" />
+                  </div>
+                  <VBtn
+                    class="mlk-select-btn"
+                    :icon="isSelected(item) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
+                    :color="isSelected(item) ? 'success' : undefined"
+                    variant="text"
+                    @click.stop="toggleSelected(item)"
+                  />
+                </div>
+                <div class="mlk-media-body">
+                  <div class="mlk-media-title">{{ item.title }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.year || '未知年份' }} · {{ item.type_label }} · {{ item.library || item.server }}</div>
+                  <div class="mlk-chip-row">
+                    <VChip size="small" variant="tonal">{{ item.rating || '-' }} 分</VChip>
+                    <VChip size="small" :color="item.watched ? 'success' : 'warning'" variant="tonal">{{ item.progress }}</VChip>
+                    <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
                   </div>
                 </div>
-              </template>
-              <template #item.rating="{ item }">{{ item.rating || '-' }}</template>
-              <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
-              <template #no-data>
-                <VEmptyState icon="mdi-folder-open-outline" title="暂无媒体库数据" text="请先执行媒体库扫描。" />
-              </template>
-            </VDataTable>
+              </VSheet>
+            </div>
+            <VEmptyState v-else icon="mdi-folder-open-outline" title="没有匹配的媒体" text="调整媒体库入口、类型、观看状态或搜索关键词后再试。" />
           </div>
         </VWindowItem>
 
         <VWindowItem value="recommendations">
           <div class="mlk-section">
-            <VDataTable
-              :headers="[
-                { title: '建议类型', key: 'reason', width: 130 },
-                { title: '媒体', key: 'title' },
-                { title: '进度', key: 'progress', width: 100 },
-                { title: '预计释放', key: 'size', width: 120 },
-                { title: '说明', key: 'message' },
-              ]"
-              :items="recommendationRows"
-              density="comfortable"
-            >
-              <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
-              <template #no-data>
-                <VEmptyState icon="mdi-lightbulb-on-outline" title="暂无清理建议" text="扫描后会列出已看完、入库较久未观看和占用较大的候选。 " />
-              </template>
-            </VDataTable>
+            <div v-if="recommendationRows.length" class="mlk-media-grid">
+              <VSheet
+                v-for="item in recommendationRows"
+                :key="item.id"
+                border
+                rounded
+                class="mlk-media-card"
+                @click="openMediaDetail(item)"
+              >
+                <div class="mlk-poster">
+                  <VImg v-if="item.image_url" :src="item.image_url" cover />
+                  <div v-else class="mlk-poster-fallback">
+                    <VIcon :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="44" />
+                  </div>
+                </div>
+                <div class="mlk-media-body">
+                  <div class="mlk-media-title">{{ item.title }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.reason }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.message }}</div>
+                  <div class="mlk-chip-row">
+                    <VChip size="small" variant="tonal">{{ item.progress }}</VChip>
+                    <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
+                  </div>
+                </div>
+              </VSheet>
+            </div>
+            <VEmptyState v-else icon="mdi-lightbulb-on-outline" title="暂无清理建议" text="扫描后会列出已看完、入库较久未观看和占用较大的候选。" />
           </div>
         </VWindowItem>
 
@@ -475,7 +592,7 @@ onMounted(loadStatus)
               rows="3"
             />
             <VAlert type="info" variant="tonal" density="comfortable">
-              磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。
+              磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。
             </VAlert>
             <div class="mlk-switch-grid">
               <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
@@ -485,6 +602,77 @@ onMounted(loadStatus)
         </VWindowItem>
       </VWindow>
     </VSheet>
+
+    <VDialog v-model="detailDialog" max-width="920">
+      <VCard v-if="selectedMediaDetail">
+        <div class="mlk-detail-layout">
+          <div class="mlk-detail-poster">
+            <VImg v-if="selectedMediaDetail.image_url" :src="selectedMediaDetail.image_url" cover />
+            <div v-else class="mlk-poster-fallback">
+              <VIcon :icon="selectedMediaDetail.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="54" />
+            </div>
+          </div>
+          <div class="mlk-detail-content">
+            <div class="mlk-detail-head">
+              <div>
+                <div class="text-h6 font-weight-bold">{{ selectedMediaDetail.title }}</div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ selectedMediaDetail.year || '未知年份' }} · {{ selectedMediaDetail.type_label }} · {{ selectedMediaDetail.library || selectedMediaDetail.server }}
+                </div>
+              </div>
+              <VBtn icon="mdi-close" variant="text" @click="detailDialog = false" />
+            </div>
+            <div class="mlk-chip-row">
+              <VChip color="primary" variant="tonal">{{ selectedMediaDetail.rating || '-' }} 分</VChip>
+              <VChip :color="selectedMediaDetail.watched ? 'success' : 'warning'" variant="tonal">{{ selectedMediaDetail.progress }}</VChip>
+              <VChip variant="tonal">{{ formatBytes(selectedMediaDetail.size) }}</VChip>
+            </div>
+            <p class="mlk-overview">
+              {{ selectedMediaDetail.overview || '暂无简介。' }}
+            </p>
+            <div class="mlk-detail-grid">
+              <div>
+                <div class="text-caption text-medium-emphasis">服务器</div>
+                <div>{{ selectedMediaDetail.server }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">入库时间</div>
+                <div>{{ selectedMediaDetail.added_at || '-' }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">首播/上映</div>
+                <div>{{ selectedMediaDetail.premiere_date || '-' }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">集数</div>
+                <div>{{ selectedMediaDetail.type === 'series' ? `${selectedMediaDetail.watched_episodes}/${selectedMediaDetail.total_episodes}` : '-' }}</div>
+              </div>
+              <div class="mlk-detail-wide">
+                <div class="text-caption text-medium-emphasis">路径</div>
+                <div>{{ selectedMediaDetail.path_preview || selectedMediaDetail.path || '-' }}</div>
+              </div>
+              <div class="mlk-detail-wide" v-if="selectedMediaDetail.genres?.length">
+                <div class="text-caption text-medium-emphasis">类型</div>
+                <div class="mlk-chip-row">
+                  <VChip v-for="genre in selectedMediaDetail.genres" :key="genre" size="small" variant="tonal">{{ genre }}</VChip>
+                </div>
+              </div>
+            </div>
+            <VDivider />
+            <div class="mlk-detail-actions">
+              <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
+              <VSpacer />
+              <VBtn variant="tonal" :color="isSelected(selectedMediaDetail) ? 'success' : 'primary'" @click="toggleSelected(selectedMediaDetail)">
+                {{ isSelected(selectedMediaDetail) ? '移出清理选择' : '加入清理选择' }}
+              </VBtn>
+              <VBtn color="primary" variant="flat" :loading="planning" @click="createSinglePlan(selectedMediaDetail)">
+                为此项生成计划
+              </VBtn>
+            </div>
+          </div>
+        </div>
+      </VCard>
+    </VDialog>
 
     <VDialog v-model="executeDialog" max-width="640">
       <VCard>
@@ -524,8 +712,11 @@ onMounted(loadStatus)
 .mlk-plan-bar,
 .mlk-plan-title,
 .mlk-danger-actions,
-.mlk-media-cell,
-.mlk-disk-row {
+.mlk-disk-row,
+.mlk-detail-head,
+.mlk-detail-actions,
+.mlk-chip-row,
+.mlk-filter-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -533,7 +724,8 @@ onMounted(loadStatus)
 
 .mlk-header,
 .mlk-toolbar,
-.mlk-plan-bar {
+.mlk-plan-bar,
+.mlk-filter-row {
   flex-wrap: wrap;
 }
 
@@ -545,6 +737,18 @@ onMounted(loadStatus)
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
+}
+
+.mlk-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.mlk-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
 }
 
 .mlk-stat-card,
@@ -578,13 +782,73 @@ onMounted(loadStatus)
   flex: 1 1 180px;
 }
 
+.mlk-library-card,
+.mlk-media-card {
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.mlk-library-card:hover,
+.mlk-media-card:hover {
+  border-color: rgb(var(--v-theme-primary));
+  transform: translateY(-2px);
+}
+
+.mlk-library-image,
+.mlk-library-fallback {
+  height: 126px;
+}
+
+.mlk-library-fallback,
+.mlk-poster-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+
+.mlk-library-meta,
+.mlk-media-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mlk-chip-row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mlk-poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+
+.mlk-select-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.mlk-media-title {
+  min-height: 40px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .mlk-plan-detail {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.mlk-danger-actions {
+.mlk-danger-actions,
+.mlk-detail-actions {
   justify-content: flex-end;
 }
 
@@ -596,6 +860,46 @@ onMounted(loadStatus)
   max-width: 960px;
 }
 
+.mlk-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  min-height: 520px;
+}
+
+.mlk-detail-poster {
+  min-height: 520px;
+  background: rgba(var(--v-theme-surface-variant), 0.55);
+}
+
+.mlk-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.mlk-detail-head {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.mlk-overview {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.mlk-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mlk-detail-wide {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 720px) {
   .mlk-page {
     padding: 12px;
@@ -604,6 +908,14 @@ onMounted(loadStatus)
   .mlk-header > .v-btn,
   .mlk-plan-bar > .v-btn {
     width: 100%;
+  }
+
+  .mlk-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mlk-detail-poster {
+    min-height: 340px;
   }
 }
 </style>
