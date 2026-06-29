@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-wX9AqmEV.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-C3XhDIrv.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps,vShow:_vShow,withDirectives:_withDirectives} = await importShared('vue');
 
@@ -265,7 +265,7 @@ const scanCronOptions = [
   { title: '每天 03:00', value: '0 3 * * *' },
   { title: '每周一 03:00', value: '0 3 * * 1' },
 ];
-const mediaWatchFilterOptions = ['全部', '已播放', '观看中', '未播放'];
+const mediaWatchFilterOptions = ['全部', '已播放', '未播放'];
 const cleanupWatchStateOptions = [
   { title: '不限制', value: 'any' },
   { title: '已看完', value: 'watched' },
@@ -285,7 +285,6 @@ const filteredMediaRows = computed(() => {
     if (typeFilter.value === '剧集' && item.type !== 'series') return false
     const watchState = resolveWatchState(item);
     if (watchFilter.value === '已播放' && watchState !== 'watched') return false
-    if (watchFilter.value === '观看中' && watchState !== 'watching') return false
     if (watchFilter.value === '未播放' && watchState !== 'unwatched') return false
     return true
   })
@@ -363,14 +362,12 @@ function resolveWatchState(item) {
 function watchStateColor(item) {
   const watchState = resolveWatchState(item);
   if (watchState === 'watched') return 'success'
-  if (watchState === 'watching') return 'info'
   return 'warning'
 }
 
 function watchStateText(item) {
   const watchState = resolveWatchState(item);
   if (watchState === 'watched') return item.type === 'series' ? `已播放 ${item.progress}` : '已播放'
-  if (watchState === 'watching') return item.type === 'series' ? `观看中 ${item.progress}` : '观看中'
   return item.type === 'series' ? `未播放 ${item.progress}` : '未播放'
 }
 
@@ -2196,6 +2193,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7a7ca457"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-e7ab552f"]]);
 
 export { AppPage as default };
