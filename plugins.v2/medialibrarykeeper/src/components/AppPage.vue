@@ -270,6 +270,19 @@ function removeCleanupRule(index) {
   configDraft.value.cleanup_rules = rules.length ? rules : [createDefaultCleanupRule()]
 }
 
+function addPathMapping() {
+  configDraft.value.path_mappings = [
+    ...(configDraft.value.path_mappings || []),
+    { emby_path: '', mp_path: '' },
+  ]
+}
+
+function removePathMapping(index) {
+  const mappings = [...(configDraft.value.path_mappings || [])]
+  mappings.splice(index, 1)
+  configDraft.value.path_mappings = mappings
+}
+
 function openMediaDetail(item) {
   selectedMediaDetail.value = item
   detailDialog.value = true
@@ -888,6 +901,32 @@ onMounted(() => {
             </div>
 
             <div class="mlk-settings-group">
+              <div class="mlk-section-header">
+                <div>
+                  <div class="text-subtitle-1 font-weight-medium">目录映射</div>
+                  <div class="text-caption text-medium-emphasis">将 Emby 容器路径转换为 MoviePilot 容器内可访问路径。</div>
+                </div>
+                <VBtn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addPathMapping">
+                  添加映射
+                </VBtn>
+              </div>
+              <VSheet
+                v-for="(mapping, index) in configDraft.path_mappings"
+                :key="`path-mapping-${index}`"
+                border
+                rounded
+                class="mlk-path-mapping-row"
+              >
+                <VTextField v-model="mapping.emby_path" label="Emby 路径前缀" placeholder="/video" density="comfortable" hide-details />
+                <VTextField v-model="mapping.mp_path" label="MP 路径前缀" placeholder="/media/video" density="comfortable" hide-details />
+                <VBtn icon="mdi-delete-outline" color="error" variant="text" @click="removePathMapping(index)" />
+              </VSheet>
+              <VAlert v-if="!(configDraft.path_mappings || []).length" type="info" variant="tonal" density="comfortable">
+                Emby 与 MoviePilot 挂载路径一致时无需配置。
+              </VAlert>
+            </div>
+
+            <div class="mlk-settings-group">
               <div class="text-subtitle-1 font-weight-medium">删除行为</div>
               <div class="mlk-switch-grid">
                 <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
@@ -1029,6 +1068,10 @@ onMounted(() => {
               <div class="mlk-detail-wide">
                 <div class="text-caption text-medium-emphasis">路径</div>
                 <div>{{ selectedMediaDetail.path_preview || selectedMediaDetail.path || '-' }}</div>
+              </div>
+              <div class="mlk-detail-wide" v-if="selectedMediaDetail.emby_path_preview">
+                <div class="text-caption text-medium-emphasis">Emby 原路径</div>
+                <div>{{ selectedMediaDetail.emby_path_preview }}</div>
               </div>
               <div class="mlk-detail-wide" v-if="selectedMediaDetail.genres?.length">
                 <div class="text-caption text-medium-emphasis">类型</div>
@@ -1366,6 +1409,14 @@ onMounted(() => {
   grid-template-columns: minmax(132px, 0.9fr) minmax(132px, 0.9fr) minmax(126px, 0.8fr) minmax(112px, 0.7fr) minmax(140px, 0.9fr) 44px;
   gap: 10px;
   align-items: start;
+}
+
+.mlk-path-mapping-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 44px;
+  gap: 10px;
+  align-items: start;
+  padding: 14px;
 }
 
 .mlk-settings-actions {

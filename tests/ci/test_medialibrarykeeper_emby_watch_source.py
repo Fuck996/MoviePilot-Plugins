@@ -21,3 +21,14 @@ def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None
     assert 'if str(parent) == current.anchor:' in source
     assert "unavailable" in source
     assert "_media_root_path" in source
+
+
+def test_medialibrarykeeper_maps_emby_paths_to_moviepilot_paths() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+
+    assert '"path_mappings": []' in source
+    assert "_normalize_path_mappings" in source
+    assert "_map_emby_path" in source
+    assert "return sorted(normalized, key=lambda item: len(item[\"emby_path\"]), reverse=True)" in source
+    assert 'paths = [self._map_emby_path(path) for path in emby_paths]' in source
+    assert 'path = self._map_emby_path(episode.get("Path"))' in source

@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.24"
+    plugin_version = "0.3.25"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -483,6 +483,7 @@ class MediaLibraryKeeper(_PluginBase):
             "default_delete_source": False,
             "mediaservers": [],
             "downloaders": [],
+            "path_mappings": [],
             "delete_seed_tasks": False,
             "library_names": [],
             "cleanup_libraries": [],
@@ -507,6 +508,7 @@ class MediaLibraryKeeper(_PluginBase):
         normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
         for key in ["mediaservers", "downloaders", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
+        normalized["path_mappings"] = cls._normalize_path_mappings(normalized.get("path_mappings"))
         normalized["library_names"] = []
         normalized["cleanup_rules"] = cls._normalize_cleanup_rules(raw_config)
         first_rule = normalized["cleanup_rules"][0] if normalized["cleanup_rules"] else cls._default_cleanup_rule()
@@ -543,6 +545,21 @@ class MediaLibraryKeeper(_PluginBase):
                 "max_rating": config.get("cleanup_max_rating"),
             }]
         return [cls._normalize_cleanup_rule(rule) for rule in rules if isinstance(rule, dict)]
+
+    @classmethod
+    def _normalize_path_mappings(cls, mappings: Any) -> List[Dict[str, str]]:
+        if not isinstance(mappings, list):
+            return []
+        normalized = []
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
+            emby_path = cls._normalized_path_text(mapping.get("emby_path"))
+            mp_path = cls._normalized_path_text(mapping.get("mp_path"))
+            if not emby_path or not mp_path:
+                continue
+            normalized.append({"emby_path": emby_path, "mp_path": mp_path})
+        return sorted(normalized, key=lambda item: len(item["emby_path"]), reverse=True)
 
     @classmethod
     def _normalize_cleanup_rule(cls, rule: Dict[str, Any]) -> Dict[str, Any]:
@@ -687,9 +704,12 @@ class MediaLibraryKeeper(_PluginBase):
         for item in raw_items:
             library = self._normalize_emby_library(item, service_info, server_name)
             if library and self._accept_library_name(library.get("title")):
-                paths = library_paths.get(library.get("item_id")) or []
+                emby_paths = library_paths.get(library.get("item_id")) or []
+                paths = [self._map_emby_path(path) for path in emby_paths]
+                fallback_path = self._map_emby_path(item.get("Path"))
+                library["emby_paths"] = emby_paths
                 library["paths"] = paths
-                library["path"] = paths[0] if paths else self._clean_text(item.get("Path"))
+                library["path"] = paths[0] if paths else fallback_path
                 libraries.append(library)
         return libraries
 
@@ -944,7 +964,7 @@ class MediaLibraryKeeper(_PluginBase):
                     started += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
-                path = self._clean_text(episode.get("Path"))
+                path = self._map_emby_path(episode.get("Path"))
                 if path:
                     paths.append(path)
                 size += self._media_sources_size(episode.get("MediaSources") or [])
@@ -1010,7 +1030,8 @@ class MediaLibraryKeeper(_PluginBase):
             else (1 if is_resumable or self._has_play_activity_user_data(user_data) else 0)
         )
         watch_state = self._watch_state(watched_episodes, total_episodes, is_series, watched, started_episodes)
-        path = self._clean_text(item.get("Path"))
+        emby_path = self._clean_text(item.get("Path"))
+        path = self._map_emby_path(emby_path)
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         added_at = self._format_emby_date(item.get("DateCreated"))
         last_watched_at = self._format_emby_date(user_data.get("LastPlayedDate"))
@@ -1029,6 +1050,8 @@ class MediaLibraryKeeper(_PluginBase):
             "library_type": library.get("type") or "",
             "path": path,
             "path_preview": self._path_preview(path),
+            "emby_path": emby_path if emby_path and emby_path != path else "",
+            "emby_path_preview": self._path_preview(emby_path) if emby_path and emby_path != path else "",
             "rating": item.get("CommunityRating") or item.get("CriticRating"),
             "image_url": self._build_image_url(item, server_name),
             "overview": self._clean_text(item.get("Overview")),
@@ -1521,6 +1544,25 @@ class MediaLibraryKeeper(_PluginBase):
                 result.append(clean_path)
         return result
 
+    def _map_emby_path(self, path: Any) -> str:
+        return self._apply_path_mappings(path, self._config.get("path_mappings") or [])
+
+    @classmethod
+    def _apply_path_mappings(cls, path: Any, mappings: List[Dict[str, str]]) -> str:
+        clean_path = cls._normalized_path_text(path)
+        if not clean_path:
+            return ""
+        for mapping in mappings or []:
+            emby_root = cls._normalized_path_text((mapping or {}).get("emby_path"))
+            mp_root = cls._normalized_path_text((mapping or {}).get("mp_path"))
+            if not emby_root or not mp_root:
+                continue
+            if clean_path == emby_root:
+                return mp_root
+            if clean_path.startswith(emby_root + "/"):
+                return f"{mp_root}/{clean_path[len(emby_root) + 1:]}"
+        return clean_path
+
     @classmethod
     def _path_is_relative_to(cls, path: Any, root: Any) -> bool:
         clean_path = cls._normalized_path_text(path)
@@ -1539,7 +1581,7 @@ class MediaLibraryKeeper(_PluginBase):
 
     @staticmethod
     def _normalized_path_text(path: Any) -> str:
-        return str(path or "").replace("\\", "/").rstrip("/")
+        return str(path or "").strip().replace("\\", "/").rstrip("/")
 
     def _match_transfer_records(self, media: Dict[str, Any]) -> List[Any]:
         records: List[Any] = []

@@ -29,6 +29,7 @@ function createDefaultConfig() {
     default_delete_source: false,
     mediaservers: [],
     downloaders: [],
+    path_mappings: [],
     delete_seed_tasks: false,
     library_names: [],
     cleanup_libraries: [],
@@ -103,6 +104,7 @@ function compactMediaItem(item) {
     'library_item_id',
     'library_type',
     'path_preview',
+    'emby_path_preview',
     'rating',
     'image_url',
     'genres',
@@ -190,6 +192,7 @@ function pickFields(source, fields) {
 function cloneConfig(config) {
   const cloned = JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }));
   cloned.library_names = [];
+  cloned.path_mappings = normalizePathMappings(config?.path_mappings ?? cloned.path_mappings);
   cloned.cleanup_rules = normalizeCleanupRules(config || {}, cloned);
   const firstRule = cloned.cleanup_rules[0] || createDefaultCleanupRule();
   cloned.cleanup_operator = firstRule.operator;
@@ -199,6 +202,20 @@ function cloneConfig(config) {
   cloned.cleanup_max_rating = firstRule.max_rating;
   cloned.cleanup_watched = firstRule.watch_state === 'watched';
   return cloned
+}
+
+function normalizePathMappings(mappings) {
+  if (!Array.isArray(mappings)) return []
+  return mappings
+    .map(mapping => ({
+      emby_path: normalizePathText(mapping?.emby_path),
+      mp_path: normalizePathText(mapping?.mp_path),
+    }))
+    .filter(mapping => mapping.emby_path && mapping.mp_path)
+}
+
+function normalizePathText(path) {
+  return String(path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
 function normalizeCleanupRules(sourceConfig, mergedConfig) {
