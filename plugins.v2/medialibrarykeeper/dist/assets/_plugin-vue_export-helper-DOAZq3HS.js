@@ -18,6 +18,12 @@ function createDefaultConfig() {
     default_delete_source: false,
     mediaservers: [],
     library_names: [],
+    cleanup_libraries: [],
+    cleanup_operator: 'and',
+    cleanup_unwatched_days: 0,
+    cleanup_watched: false,
+    cleanup_min_size_gb: 0,
+    cleanup_max_rating: 0,
   }
 }
 

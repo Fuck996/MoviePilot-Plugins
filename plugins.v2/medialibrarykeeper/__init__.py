@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.5"
+    plugin_version = "0.3.6"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -78,7 +78,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "name": "媒体库管家定时扫描",
                 "trigger": trigger,
                 "func": self.scan_library,
-                "kwargs": {"notify_disk_warning": True},
+                "kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True},
             }
         ]
 
@@ -118,6 +118,13 @@ class MediaLibraryKeeper(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "执行清理计划",
+            },
+            {
+                "path": "/cleanup/plan/items",
+                "endpoint": self.update_cleanup_plan_items_api,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "调整清理批次条目",
             },
             {
                 "path": "/history",
@@ -212,7 +219,7 @@ class MediaLibraryKeeper(_PluginBase):
             logger.error(f"媒体库管家扫描失败：{err}")
             return schemas.Response(success=False, message=str(err), data=self.get_status().data)
 
-    def scan_library(self, notify_disk_warning: bool = False) -> Dict[str, Any]:
+    def scan_library(self, notify_disk_warning: bool = False, build_cleanup_batch: bool = False) -> Dict[str, Any]:
         services = self._active_emby_services()
         if not services:
             raise RuntimeError("没有可用的 Emby 媒体服务器，请先在 MoviePilot 媒体服务器中完成配置。")
@@ -246,6 +253,8 @@ class MediaLibraryKeeper(_PluginBase):
 
         if notify_disk_warning:
             self._notify_disk_warning(snapshot)
+        if build_cleanup_batch:
+            self._create_scheduled_cleanup_batch(snapshot)
         return snapshot
 
     def create_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
@@ -264,20 +273,44 @@ class MediaLibraryKeeper(_PluginBase):
             return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
 
         delete_source = bool(payload.get("delete_source", self._config.get("default_delete_source")))
-        plan_items = [self._build_plan_item(media_index[item_id], delete_source) for item_id in selected_ids]
-        ready_count = len([item for item in plan_items if item.get("status") == "ready"])
-        estimated_size = self._sum_unique_target_size(plan_items)
-        plan_status = "ready" if ready_count == len(plan_items) else "blocked"
-        plan = {
-            "id": datetime.now().strftime("%Y%m%d%H%M%S"),
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "delete_source": delete_source,
-            "items": plan_items,
-            "estimated_reclaim_size": estimated_size,
-            "ready_count": ready_count,
-            "status": plan_status,
-            "message": self._plan_message(plan_status, plan_items),
-        }
+        plan = self._build_cleanup_plan([media_index[item_id] for item_id in selected_ids], delete_source, source="manual")
+        self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
+        return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
+
+    def update_cleanup_plan_items_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
+        payload = payload or {}
+        plan_id = self._clean_text(payload.get("plan_id"))
+        action = self._clean_text(payload.get("action")).lower()
+        pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
+        if not plan_id or pending_plan.get("id") != plan_id:
+            return schemas.Response(success=False, message="清理批次不存在或已失效")
+        if action not in {"add", "remove"}:
+            return schemas.Response(success=False, message="不支持的批次调整动作")
+
+        item_ids = [self._clean_text(item) for item in payload.get("item_ids") or [] if self._clean_text(item)]
+        if not item_ids:
+            return schemas.Response(success=False, message="请选择要调整的媒体条目")
+
+        snapshot = self._load_snapshot()
+        media_index = {item.get("id"): item for item in snapshot.get("media", [])}
+        current_ids = [item.get("media_id") for item in pending_plan.get("items", []) if item.get("media_id")]
+        if action == "remove":
+            next_ids = [item_id for item_id in current_ids if item_id not in set(item_ids)]
+        else:
+            missing = [item_id for item_id in item_ids if item_id not in media_index]
+            if missing:
+                return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
+            next_ids = list(dict.fromkeys([*current_ids, *item_ids]))
+
+        media_items = [media_index[item_id] for item_id in next_ids if item_id in media_index]
+        plan = self._build_cleanup_plan(
+            media_items,
+            bool(pending_plan.get("delete_source")),
+            source=pending_plan.get("source") or "manual",
+            criteria=pending_plan.get("criteria"),
+            plan_id=pending_plan.get("id"),
+            created_at=pending_plan.get("created_at"),
+        )
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
 
@@ -320,18 +353,30 @@ class MediaLibraryKeeper(_PluginBase):
             "default_delete_source": False,
             "mediaservers": [],
             "library_names": [],
+            "cleanup_libraries": [],
+            "cleanup_operator": "and",
+            "cleanup_unwatched_days": 0,
+            "cleanup_watched": False,
+            "cleanup_min_size_gb": 0,
+            "cleanup_max_rating": 0,
         }
 
     @classmethod
     def _normalize_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
         defaults = cls._default_config()
         normalized = {**defaults, **(config or {})}
-        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source"]:
+        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source", "cleanup_watched"]:
             normalized[key] = bool(normalized.get(key, defaults[key]))
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
         normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
-        for key in ["mediaservers", "library_names"]:
+        normalized["cleanup_operator"] = cls._clean_text(normalized.get("cleanup_operator")).lower()
+        if normalized["cleanup_operator"] not in {"and", "or"}:
+            normalized["cleanup_operator"] = "and"
+        normalized["cleanup_unwatched_days"] = max(cls._to_int(normalized.get("cleanup_unwatched_days"), 0), 0)
+        normalized["cleanup_min_size_gb"] = max(cls._to_int(normalized.get("cleanup_min_size_gb"), 0), 0)
+        normalized["cleanup_max_rating"] = max(cls._to_float(normalized.get("cleanup_max_rating"), 0), 0)
+        for key in ["mediaservers", "library_names", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
         return normalized
 
@@ -347,6 +392,13 @@ class MediaLibraryKeeper(_PluginBase):
     def _to_int(value: Any, default: int = 0) -> int:
         try:
             return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _to_float(value: Any, default: float = 0) -> float:
+        try:
+            return float(value)
         except (TypeError, ValueError):
             return default
 
@@ -438,6 +490,8 @@ class MediaLibraryKeeper(_PluginBase):
                         normalized["watched_episodes"] = stats["watched_episodes"]
                         normalized["size"] = stats["size"] or normalized.get("size", 0)
                         normalized["episode_paths"] = stats["paths"]
+                        normalized["last_episode_added_at"] = stats.get("last_episode_added_at") or normalized.get("last_episode_added_at", "")
+                        normalized["last_watched_at"] = stats.get("last_watched_at") or normalized.get("last_watched_at", "")
                         normalized["watched"] = (
                             normalized["total_episodes"] > 0
                             and normalized["watched_episodes"] >= normalized["total_episodes"]
@@ -474,7 +528,9 @@ class MediaLibraryKeeper(_PluginBase):
         paths = []
         start = 0
         limit = 500
-        fields = quote("Path,MediaSources,UserData")
+        fields = quote("Path,MediaSources,UserData,DateCreated")
+        last_episode_added_at = ""
+        last_watched_at = ""
         while True:
             url = (
                 f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(item_id)}&Recursive=true&IncludeItemTypes=Episode"
@@ -487,8 +543,11 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             total += len(raw_items)
             for episode in raw_items:
-                if (episode.get("UserData") or {}).get("Played"):
+                user_data = episode.get("UserData") or {}
+                if user_data.get("Played"):
                     watched += 1
+                last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
+                last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
                 path = self._clean_text(episode.get("Path"))
                 if path:
                     paths.append(path)
@@ -496,7 +555,14 @@ class MediaLibraryKeeper(_PluginBase):
             if len(raw_items) < limit:
                 break
             start += limit
-        return {"total_episodes": total, "watched_episodes": watched, "size": size, "paths": paths}
+        return {
+            "total_episodes": total,
+            "watched_episodes": watched,
+            "size": size,
+            "paths": paths,
+            "last_episode_added_at": last_episode_added_at,
+            "last_watched_at": last_watched_at,
+        }
 
     def _normalize_emby_library(self, item: Dict[str, Any], service_info: Any, server_name: str) -> Dict[str, Any]:
         item_id = self._clean_text(item.get("Id"))
@@ -532,6 +598,8 @@ class MediaLibraryKeeper(_PluginBase):
         watched = bool(user_data.get("Played")) or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
         path = self._clean_text(item.get("Path"))
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
+        added_at = self._format_emby_date(item.get("DateCreated"))
+        last_watched_at = self._format_emby_date(user_data.get("LastPlayedDate"))
         return {
             "id": f"{server_name}:{item.get('Id')}",
             "server": server_name,
@@ -553,7 +621,9 @@ class MediaLibraryKeeper(_PluginBase):
             "genres": [self._clean_text(genre) for genre in item.get("Genres") or [] if self._clean_text(genre)],
             "premiere_date": self._format_emby_date(item.get("PremiereDate"))[:10],
             "provider_ids": item.get("ProviderIds") or {},
-            "added_at": self._format_emby_date(item.get("DateCreated")),
+            "added_at": added_at,
+            "last_episode_added_at": added_at,
+            "last_watched_at": last_watched_at,
             "watched": watched,
             "progress": self._progress_text(watched_episodes, total_episodes, is_series, watched),
             "watched_episodes": watched_episodes,
@@ -644,6 +714,38 @@ class MediaLibraryKeeper(_PluginBase):
         return text.replace("T", " ").replace("Z", "")[:19]
 
     @staticmethod
+    def _max_date_text(left: Any, right: Any) -> str:
+        left_text = str(left or "").strip()
+        right_text = str(right or "").strip()
+        if not left_text:
+            return right_text
+        if not right_text:
+            return left_text
+        return max(left_text, right_text)
+
+    @staticmethod
+    def _parse_date(value: Any) -> Optional[datetime]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        for fmt, length in (("%Y-%m-%d %H:%M:%S", 19), ("%Y-%m-%d", 10)):
+            try:
+                return datetime.strptime(text[:length], fmt)
+            except ValueError:
+                continue
+        return None
+
+    def _inactive_days(self, item: Dict[str, Any]) -> int:
+        last_active = (
+            self._parse_date(item.get("last_watched_at"))
+            or self._parse_date(item.get("last_episode_added_at"))
+            or self._parse_date(item.get("added_at"))
+        )
+        if not last_active:
+            return 0
+        return max((datetime.now() - last_active).days, 0)
+
+    @staticmethod
     def _progress_text(watched_episodes: int, total_episodes: int, is_series: bool, watched: bool) -> str:
         if is_series:
             return f"{watched_episodes}/{total_episodes}" if total_episodes else "0/0"
@@ -665,6 +767,103 @@ class MediaLibraryKeeper(_PluginBase):
                 deduped[key] = item
         return sorted(deduped.values(), key=lambda item: (item.get("server") or "", item.get("title") or ""))
 
+    def _build_cleanup_plan(
+        self,
+        media_items: List[Dict[str, Any]],
+        delete_source: bool,
+        source: str = "manual",
+        criteria: Optional[Dict[str, Any]] = None,
+        plan_id: Optional[str] = None,
+        created_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        batch_id = plan_id or datetime.now().strftime("%Y%m%d%H%M%S")
+        plan_items = [self._build_plan_item(media, delete_source) for media in media_items]
+        ready_count = len([item for item in plan_items if item.get("status") == "ready"])
+        estimated_size = self._sum_unique_target_size(plan_items)
+        plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
+        return {
+            "id": batch_id,
+            "batch_id": batch_id,
+            "created_at": created_at or now_text,
+            "updated_at": now_text,
+            "source": source,
+            "source_label": "定时计划" if source == "scheduled" else "手动选择",
+            "criteria": criteria or {},
+            "delete_source": delete_source,
+            "items": plan_items,
+            "estimated_reclaim_size": estimated_size,
+            "ready_count": ready_count,
+            "status": plan_status,
+            "message": self._plan_message(plan_status, plan_items),
+        }
+
+    def _create_scheduled_cleanup_batch(self, snapshot: Dict[str, Any]) -> None:
+        candidates = self._cleanup_candidates(snapshot)
+        if not candidates:
+            return
+        pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
+        if pending_plan and pending_plan.get("source") != "scheduled":
+            logger.info("媒体库管家已有手动清理批次，跳过本次定时批次覆盖")
+            return
+        plan = self._build_cleanup_plan(
+            candidates,
+            bool(self._config.get("default_delete_source")),
+            source="scheduled",
+            criteria=self._cleanup_criteria_summary(),
+        )
+        self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
+        if self._config.get("notify_enabled"):
+            self._notify_cleanup_batch(plan)
+
+    def _cleanup_candidates(self, snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
+        libraries = self._config.get("cleanup_libraries") or []
+        media_items = snapshot.get("media", []) or []
+        candidates = []
+        for item in media_items:
+            if libraries and not self._media_in_cleanup_library(item, libraries):
+                continue
+            if self._matches_cleanup_conditions(item):
+                candidates.append(item)
+        return sorted(candidates, key=lambda item: (-(int(item.get("size") or 0)), item.get("last_watched_at") or "", item.get("title") or ""))
+
+    def _media_in_cleanup_library(self, item: Dict[str, Any], libraries: List[str]) -> bool:
+        values = {
+            self._clean_text(item.get("library")),
+            self._clean_text(item.get("library_id")),
+            self._clean_text(item.get("library_item_id")),
+        }
+        filters = {self._clean_text(value) for value in libraries if self._clean_text(value)}
+        return bool(values & filters)
+
+    def _matches_cleanup_conditions(self, item: Dict[str, Any]) -> bool:
+        checks = []
+        if self._config.get("cleanup_watched"):
+            checks.append(bool(item.get("watched")))
+        days = int(self._config.get("cleanup_unwatched_days") or 0)
+        if days > 0:
+            checks.append(self._inactive_days(item) >= days)
+        min_size = int(self._config.get("cleanup_min_size_gb") or 0)
+        if min_size > 0:
+            checks.append(int(item.get("size") or 0) >= min_size * 1024 ** 3)
+        max_rating = float(self._config.get("cleanup_max_rating") or 0)
+        if max_rating > 0:
+            rating = self._to_float(item.get("rating"), 0)
+            checks.append(rating > 0 and rating <= max_rating)
+        if not checks:
+            return False
+        return any(checks) if self._config.get("cleanup_operator") == "or" else all(checks)
+
+    def _cleanup_criteria_summary(self) -> Dict[str, Any]:
+        return {
+            "libraries": self._config.get("cleanup_libraries") or [],
+            "operator": self._config.get("cleanup_operator"),
+            "unwatched_days": self._config.get("cleanup_unwatched_days"),
+            "watched": self._config.get("cleanup_watched"),
+            "min_size_gb": self._config.get("cleanup_min_size_gb"),
+            "max_rating": self._config.get("cleanup_max_rating"),
+        }
+
     def _build_plan_item(self, media: Dict[str, Any], delete_source: bool) -> Dict[str, Any]:
         records = self._match_transfer_records(media)
         delete_targets: List[Dict[str, Any]] = []
@@ -685,6 +884,11 @@ class MediaLibraryKeeper(_PluginBase):
             "type_label": media.get("type_label"),
             "watched": bool(media.get("watched")),
             "size": self._sum_target_size(delete_targets) or int(media.get("size") or 0),
+            "library": media.get("library"),
+            "rating": media.get("rating"),
+            "progress": media.get("progress"),
+            "last_episode_added_at": media.get("last_episode_added_at"),
+            "last_watched_at": media.get("last_watched_at"),
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
@@ -850,6 +1054,20 @@ class MediaLibraryKeeper(_PluginBase):
             lines.append("失败项：")
             lines.extend(f"- {item.get('path_preview') or item.get('record_id')}: {item.get('error')}" for item in result["failed_targets"][:5])
         self.post_message(mtype=NotificationType.MediaServer, title=title, text="\n".join(lines))
+
+    def _notify_cleanup_batch(self, plan: Dict[str, Any]) -> None:
+        items = plan.get("items") or []
+        lines = [
+            f"批次：{plan.get('batch_id') or plan.get('id')}",
+            f"命中媒体：{len(items)} 个，已匹配整理记录：{plan.get('ready_count', 0)} 个",
+            f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
+            "请进入媒体库管家清理计划页增删条目并确认执行。",
+        ]
+        for item in items[:8]:
+            lines.append(f"- {item.get('title')} / {item.get('library') or item.get('type_label')} / {self._human_size(item.get('size'))}")
+        if len(items) > 8:
+            lines.append(f"... 另有 {len(items) - 8} 个媒体")
+        self.post_message(mtype=NotificationType.MediaServer, title="【媒体库管家】清理批次待确认", text="\n".join(lines))
 
     def _notify_disk_warning(self, snapshot: Dict[str, Any]) -> None:
         if not self._config.get("disk_warning_enabled") or not self._config.get("notify_enabled"):
@@ -1134,6 +1352,8 @@ class MediaLibraryKeeper(_PluginBase):
 
     @staticmethod
     def _plan_message(status: str, items: List[Dict[str, Any]]) -> str:
+        if status == "empty":
+            return "当前清理批次没有媒体条目，可从媒体库中选择条目加入。"
         if status == "ready":
             return "清理计划已生成，所有条目均匹配到整理记录。执行前请再次确认删除范围。"
         blocked = len([item for item in items if item.get("status") != "ready"])

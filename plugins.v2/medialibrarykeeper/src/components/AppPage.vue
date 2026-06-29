@@ -48,6 +48,9 @@ const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
 const typeFilter = ref('全部')
+const mediaSort = ref('last_episode_added_at')
+const sortDesc = ref(true)
+const pageSize = ref(100)
 const executeDialog = ref(false)
 const executeConfirmed = ref(false)
 const configDraft = ref(toEditableConfig())
@@ -77,6 +80,14 @@ const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => su
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
+const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.title, value: item.title })))
+const sortOptions = [
+  { title: '最后一集添加日期', value: 'last_episode_added_at' },
+  { title: '最后观看日期', value: 'last_watched_at' },
+  { title: '大小', value: 'size' },
+  { title: '评分', value: 'rating' },
+]
+const pageSizeOptions = [50, 100, 500, 1000]
 
 const filteredMediaRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
@@ -93,6 +104,21 @@ const filteredMediaRows = computed(() => {
     return true
   })
 })
+
+const sortedMediaRows = computed(() => {
+  const key = mediaSort.value
+  const direction = sortDesc.value ? -1 : 1
+  return [...filteredMediaRows.value].sort((left, right) => {
+    const leftValue = sortValue(left, key)
+    const rightValue = sortValue(right, key)
+    if (leftValue === rightValue) {
+      return String(left.title || '').localeCompare(String(right.title || ''), 'zh-CN')
+    }
+    return leftValue > rightValue ? direction : -direction
+  })
+})
+
+const visibleMediaRows = computed(() => sortedMediaRows.value.slice(0, pageSize.value))
 
 const libraryCards = computed(() => {
   const counts = mediaRows.value.reduce((acc, item) => {
@@ -131,10 +157,17 @@ const planHeaders = [
   { title: '预计释放', key: 'size', width: 120 },
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
+  { title: '操作', key: 'actions', width: 96, sortable: false },
 ]
 
 function isSelected(item) {
   return selectedMedia.value.some(selected => selected.id === item.id)
+}
+
+function sortValue(item, key) {
+  if (key === 'size') return Number(item.size || 0)
+  if (key === 'rating') return Number(item.rating || 0)
+  return String(item[key] || '')
 }
 
 function toggleSelected(item) {
@@ -239,6 +272,37 @@ async function createPlan() {
   } finally {
     planning.value = false
   }
+}
+
+async function updatePlanItems(action, itemIds) {
+  if (!pendingPlan.value?.id || !itemIds.length) return
+  planning.value = true
+  try {
+    const response = await props.api.post(`${pluginBase.value}/cleanup/plan/items`, {
+      plan_id: pendingPlan.value.id,
+      action,
+      item_ids: itemIds,
+    })
+    if (response?.success === false) {
+      showToast(response.message || '调整清理批次失败', 'error')
+      return
+    }
+    const data = unwrapResponse(response)
+    applyStatus(data?.status)
+    showToast(action === 'remove' ? '已移出清理批次' : '已加入清理批次')
+  } catch (err) {
+    showToast(err?.message || '调整清理批次失败', 'error')
+  } finally {
+    planning.value = false
+  }
+}
+
+async function addSelectedToPlan() {
+  await updatePlanItems('add', selectedMedia.value.map(item => item.id))
+}
+
+async function removePlanItem(item) {
+  await updatePlanItems('remove', [item.media_id])
 }
 
 function openExecuteDialog() {
@@ -391,6 +455,11 @@ onMounted(loadStatus)
               <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
               <VSelect v-model="watchFilter" label="观看状态" :items="['全部', '已看完', '未看完']" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
+              <VSelect v-model="mediaSort" label="排序规则" :items="sortOptions" density="comfortable" hide-details />
+              <VSelect v-model.number="pageSize" label="显示数量" :items="pageSizeOptions" density="comfortable" hide-details />
+              <VBtn :prepend-icon="sortDesc ? 'mdi-sort-descending' : 'mdi-sort-ascending'" variant="tonal" @click="sortDesc = !sortDesc">
+                {{ sortDesc ? '降序' : '升序' }}
+              </VBtn>
             </div>
 
             <div class="mlk-filter-row">
@@ -413,12 +482,12 @@ onMounted(loadStatus)
             </div>
 
             <VAlert v-if="selectedLibrary" type="info" variant="tonal" density="compact">
-              当前入口：{{ selectedLibrary.title }}，共 {{ filteredMediaRows.length }} 个媒体条目。
+              当前入口：{{ selectedLibrary.title }}，共 {{ filteredMediaRows.length }} 个媒体条目，显示 {{ visibleMediaRows.length }} 个。
             </VAlert>
 
-            <div v-if="filteredMediaRows.length" class="mlk-media-grid">
+            <div v-if="visibleMediaRows.length" class="mlk-media-grid">
               <VSheet
-                v-for="item in filteredMediaRows"
+                v-for="item in visibleMediaRows"
                 :key="item.id"
                 border
                 rounded
@@ -446,6 +515,8 @@ onMounted(loadStatus)
                     <VChip size="small" :color="item.watched ? 'success' : 'warning'" variant="tonal">{{ item.progress }}</VChip>
                     <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
                   </div>
+                  <div class="text-caption text-medium-emphasis">末集 {{ item.last_episode_added_at || '-' }}</div>
+                  <div class="text-caption text-medium-emphasis">观看 {{ item.last_watched_at || '-' }}</div>
                 </div>
               </VSheet>
             </div>
@@ -489,7 +560,7 @@ onMounted(loadStatus)
           <div class="mlk-section">
             <VSheet border rounded class="mlk-plan-bar">
               <div>
-                <div class="text-subtitle-1 font-weight-medium">待生成计划</div>
+                <div class="text-subtitle-1 font-weight-medium">当前选择</div>
                 <div class="text-body-2 text-medium-emphasis">
                   已选择 {{ selectedMedia.length }} 项，当前 Emby 可见体积 {{ formatBytes(selectedSize) }}
                 </div>
@@ -497,14 +568,18 @@ onMounted(loadStatus)
               <VSpacer />
               <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
               <VBtn color="primary" variant="flat" :loading="planning" :disabled="!selectedMedia.length" @click="createPlan">
-                生成清理计划
+                生成新批次
+              </VBtn>
+              <VBtn variant="tonal" :loading="planning" :disabled="!pendingPlan || !selectedMedia.length" @click="addSelectedToPlan">
+                加入当前批次
               </VBtn>
             </VSheet>
 
             <VSheet v-if="pendingPlan" border rounded class="mlk-plan-detail">
               <div class="mlk-plan-title">
                 <div>
-                  <div class="text-subtitle-1 font-weight-medium">计划 {{ pendingPlan.id }}</div>
+                  <div class="text-subtitle-1 font-weight-medium">批次 {{ pendingPlan.batch_id || pendingPlan.id }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ pendingPlan.source_label || '手动选择' }} · {{ pendingPlan.created_at }}</div>
                   <div class="text-body-2 text-medium-emphasis">{{ pendingPlan.message }}</div>
                 </div>
                 <VChip :color="planReady ? 'success' : 'warning'" variant="tonal">{{ planReady ? '可执行' : '需处理' }}</VChip>
@@ -517,6 +592,9 @@ onMounted(loadStatus)
                 </template>
                 <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
                 <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
+                <template #item.actions="{ item }">
+                  <VBtn icon="mdi-minus-circle-outline" variant="text" color="error" :loading="planning" @click="removePlanItem(item)" />
+                </template>
               </VDataTable>
               <div class="mlk-danger-actions">
                 <div class="text-body-2 text-medium-emphasis">
@@ -600,6 +678,32 @@ onMounted(loadStatus)
               <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
               <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
             </div>
+            <VDivider />
+            <div class="text-subtitle-1 font-weight-medium">清理计划配置</div>
+            <VSelect
+              v-model="configDraft.cleanup_libraries"
+              label="清理媒体库"
+              :items="libraryOptions"
+              multiple
+              chips
+              clearable
+              hint="选择要参与定时清理计划的媒体库，留空表示全部媒体库。"
+              persistent-hint
+            />
+            <div class="mlk-form-grid">
+              <VSelect
+                v-model="configDraft.cleanup_operator"
+                label="条件关系"
+                :items="[
+                  { title: '全部满足', value: 'and' },
+                  { title: '任一满足', value: 'or' },
+                ]"
+              />
+              <VTextField v-model.number="configDraft.cleanup_unwatched_days" type="number" min="0" label="超过多少天未观看" hint="0 表示不启用" persistent-hint />
+              <VTextField v-model.number="configDraft.cleanup_min_size_gb" type="number" min="0" label="大小超过 GB" hint="0 表示不启用" persistent-hint />
+              <VTextField v-model.number="configDraft.cleanup_max_rating" type="number" min="0" step="0.1" label="评分低于/等于" hint="0 表示不启用" persistent-hint />
+            </div>
+            <VSwitch v-model="configDraft.cleanup_watched" color="primary" inset label="条件包含已观看" />
             <div class="mlk-settings-actions">
               <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
                 保存设置
@@ -645,6 +749,14 @@ onMounted(loadStatus)
               <div>
                 <div class="text-caption text-medium-emphasis">入库时间</div>
                 <div>{{ selectedMediaDetail.added_at || '-' }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">最后一集添加</div>
+                <div>{{ selectedMediaDetail.last_episode_added_at || '-' }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">最后观看</div>
+                <div>{{ selectedMediaDetail.last_watched_at || '-' }}</div>
               </div>
               <div>
                 <div class="text-caption text-medium-emphasis">首播/上映</div>
