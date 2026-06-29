@@ -50,6 +50,7 @@ const selectedMediaDetail = ref(null)
 const detailDialog = ref(false)
 const selectedPlanItem = ref(null)
 const planTargetDialog = ref(false)
+const planExpanded = ref(false)
 const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
@@ -79,6 +80,13 @@ const libraries = computed(() => status.value.libraries || [])
 const mediaRows = computed(() => status.value.media || [])
 const recommendationRows = computed(() => status.value.recommendations || [])
 const pendingPlan = computed(() => status.value.pending_plan)
+const pendingPlanItems = computed(() => pendingPlan.value?.items || [])
+const pendingPlanStats = computed(() => pendingPlanItems.value.reduce((stats, item) => {
+  if (item.type === 'movie') stats.movies += 1
+  if (item.type === 'series') stats.series += 1
+  stats.size += Number(item.size || 0)
+  return stats
+}, { movies: 0, series: 0, size: 0 }))
 const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
@@ -300,6 +308,7 @@ async function scanCleanupRules() {
     const message = response?.message || '已按当前规则完成扫描识别'
     showToast(message, message.includes('已有') || message.includes('未命中') ? 'warning' : 'success')
     activeTab.value = 'plan'
+    planExpanded.value = false
   } catch (err) {
     showToast(err?.message || '按规则扫描失败', 'error')
   } finally {
@@ -344,6 +353,7 @@ async function createPlan() {
     applyStatus(data?.status)
     showToast('清理计划已生成')
     activeTab.value = 'plan'
+    planExpanded.value = false
   } catch (err) {
     showToast(err?.message || '生成清理计划失败', 'error')
   } finally {
@@ -639,42 +649,86 @@ onMounted(() => {
               </VBtn>
             </VSheet>
 
-            <VSheet v-if="pendingPlan" border rounded class="mlk-plan-detail">
-              <div class="mlk-plan-title">
-                <div>
+            <VSheet v-if="pendingPlan" border rounded class="mlk-plan-card">
+              <div class="mlk-plan-summary">
+                <div class="mlk-plan-main">
                   <div class="text-subtitle-1 font-weight-medium">批次 {{ pendingPlan.batch_id || pendingPlan.id }}</div>
                   <div class="text-caption text-medium-emphasis">{{ pendingPlan.source_label || '手动选择' }} · {{ pendingPlan.created_at }}</div>
                   <div class="text-body-2 text-medium-emphasis">{{ pendingPlan.message }}</div>
+                  <div class="mlk-chip-row">
+                    <VChip size="small" variant="tonal" color="info">电影 {{ pendingPlanStats.movies }}</VChip>
+                    <VChip size="small" variant="tonal" color="success">剧集 {{ pendingPlanStats.series }}</VChip>
+                    <VChip size="small" variant="tonal" color="warning">预计释放 {{ formatBytes(pendingPlan.estimated_reclaim_size || pendingPlanStats.size) }}</VChip>
+                    <VChip :color="planReady ? 'success' : 'warning'" size="small" variant="tonal">{{ planReady ? '可执行' : '需处理' }}</VChip>
+                  </div>
                 </div>
-                <VChip :color="planReady ? 'success' : 'warning'" variant="tonal">{{ planReady ? '可执行' : '需处理' }}</VChip>
-              </div>
-              <VDataTable :headers="planHeaders" :items="pendingPlan.items || []" density="comfortable">
-                <template #item.status="{ item }">
-                  <VChip :color="item.status === 'ready' ? 'success' : 'warning'" variant="tonal" size="small">
-                    {{ item.status === 'ready' ? '已匹配' : '未匹配' }}
-                  </VChip>
-                </template>
-                <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
-                <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
-                <template #item.actions="{ item }">
-                  <VBtn icon="mdi-file-eye-outline" variant="text" :disabled="!item.delete_targets?.length" @click="openPlanTargetDialog(item)" />
-                  <VBtn icon="mdi-minus-circle-outline" variant="text" color="error" :loading="planning" @click="removePlanItem(item)" />
-                </template>
-              </VDataTable>
-              <div class="mlk-danger-actions">
-                <div class="text-body-2 text-medium-emphasis">
-                  预计释放 {{ formatBytes(pendingPlan.estimated_reclaim_size) }}
+                <div class="mlk-plan-actions">
+                  <VTooltip :text="planExpanded ? '收起批次明细' : '展开批次明细'" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <VBtn
+                        v-bind="tooltipProps"
+                        :icon="planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                        variant="text"
+                        @click="planExpanded = !planExpanded"
+                      />
+                    </template>
+                  </VTooltip>
+                  <VTooltip text="执行当前清理批次" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <span v-bind="tooltipProps">
+                        <VBtn
+                          color="error"
+                          variant="tonal"
+                          prepend-icon="mdi-delete-alert-outline"
+                          :disabled="!planReady"
+                          @click="openExecuteDialog"
+                        >
+                          执行清理
+                        </VBtn>
+                      </span>
+                    </template>
+                  </VTooltip>
                 </div>
-                <VBtn
-                  color="error"
-                  variant="tonal"
-                  prepend-icon="mdi-delete-alert-outline"
-                  :disabled="!planReady"
-                  @click="openExecuteDialog"
-                >
-                  执行清理计划
-                </VBtn>
               </div>
+              <VExpandTransition>
+                <div v-show="planExpanded" class="mlk-plan-detail">
+                  <VDataTable :headers="planHeaders" :items="pendingPlanItems" density="comfortable">
+                    <template #item.status="{ item }">
+                      <VChip :color="item.status === 'ready' ? 'success' : 'warning'" variant="tonal" size="small">
+                        {{ item.status === 'ready' ? '已匹配' : '未匹配' }}
+                      </VChip>
+                    </template>
+                    <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
+                    <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
+                    <template #item.actions="{ item }">
+                      <VTooltip text="查看删除目标" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <span v-bind="tooltipProps">
+                            <VBtn
+                              icon="mdi-file-eye-outline"
+                              variant="text"
+                              :disabled="!item.delete_targets?.length"
+                              @click="openPlanTargetDialog(item)"
+                            />
+                          </span>
+                        </template>
+                      </VTooltip>
+                      <VTooltip text="从批次移除" location="top">
+                        <template #activator="{ props: tooltipProps }">
+                          <VBtn
+                            v-bind="tooltipProps"
+                            icon="mdi-minus-circle-outline"
+                            variant="text"
+                            color="error"
+                            :loading="planning"
+                            @click="removePlanItem(item)"
+                          />
+                        </template>
+                      </VTooltip>
+                    </template>
+                  </VDataTable>
+                </div>
+              </VExpandTransition>
             </VSheet>
           </div>
         </VWindowItem>
@@ -987,9 +1041,9 @@ onMounted(() => {
 .mlk-header,
 .mlk-toolbar,
 .mlk-plan-bar,
-.mlk-plan-title,
+.mlk-plan-summary,
+.mlk-plan-actions,
 .mlk-section-header,
-.mlk-danger-actions,
 .mlk-disk-row,
 .mlk-detail-head,
 .mlk-detail-actions,
@@ -1002,7 +1056,9 @@ onMounted(() => {
 
 .mlk-header,
 .mlk-toolbar,
-.mlk-plan-bar {
+.mlk-plan-bar,
+.mlk-plan-summary,
+.mlk-plan-actions {
   flex-wrap: wrap;
 }
 
@@ -1031,7 +1087,7 @@ onMounted(() => {
 .mlk-stat-card,
 .mlk-capability,
 .mlk-plan-bar,
-.mlk-plan-detail,
+.mlk-plan-card,
 .mlk-disk-row {
   padding: 16px;
 }
@@ -1118,10 +1174,35 @@ onMounted(() => {
   line-height: 1.25;
 }
 
-.mlk-plan-detail {
+.mlk-plan-card,
+.mlk-plan-detail,
+.mlk-plan-main {
   display: flex;
   flex-direction: column;
+}
+
+.mlk-plan-card {
   gap: 12px;
+}
+
+.mlk-plan-summary {
+  justify-content: space-between;
+}
+
+.mlk-plan-main {
+  flex: 1 1 320px;
+  min-width: 0;
+  gap: 8px;
+}
+
+.mlk-plan-actions {
+  justify-content: flex-end;
+}
+
+.mlk-plan-detail {
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 
 .mlk-target-list,
@@ -1142,7 +1223,6 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.mlk-danger-actions,
 .mlk-detail-actions {
   justify-content: flex-end;
 }
@@ -1234,8 +1314,18 @@ onMounted(() => {
   }
 
   .mlk-header > .v-btn,
-  .mlk-plan-bar > .v-btn {
+  .mlk-plan-bar > .v-btn,
+  .mlk-plan-actions {
     width: 100%;
+  }
+
+  .mlk-plan-actions {
+    justify-content: stretch;
+  }
+
+  .mlk-plan-actions span,
+  .mlk-plan-actions .v-btn:not(.v-btn--icon) {
+    flex: 1 1 auto;
   }
 
   .mlk-section-header {

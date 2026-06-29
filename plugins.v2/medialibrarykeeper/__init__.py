@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.13"
+    plugin_version = "0.3.14"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -550,6 +550,18 @@ class MediaLibraryKeeper(_PluginBase):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
+    @classmethod
+    def _is_played_user_data(cls, user_data: Dict[str, Any]) -> bool:
+        if not isinstance(user_data, dict):
+            return False
+        if cls._to_bool(user_data.get("Played")):
+            return True
+        if cls._to_int(user_data.get("PlayCount"), 0) > 0:
+            return True
+        if cls._clean_text(user_data.get("LastPlayedDate")):
+            return True
+        return cls._to_float(user_data.get("PlayedPercentage"), 0) >= 90
+
     @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
         try:
@@ -648,7 +660,8 @@ class MediaLibraryKeeper(_PluginBase):
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
-            "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags"
+            "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags,UserDataPlayCount,"
+            "UserDataLastPlayedDate"
         )
         while True:
             url = (
@@ -711,7 +724,7 @@ class MediaLibraryKeeper(_PluginBase):
         paths = []
         start = 0
         limit = 500
-        fields = quote("Path,MediaSources,UserData,DateCreated")
+        fields = quote("Path,MediaSources,UserData,DateCreated,UserDataPlayCount,UserDataLastPlayedDate")
         last_episode_added_at = ""
         last_watched_at = ""
         while True:
@@ -727,7 +740,7 @@ class MediaLibraryKeeper(_PluginBase):
             total += len(raw_items)
             for episode in raw_items:
                 user_data = episode.get("UserData") or {}
-                if user_data.get("Played"):
+                if self._is_played_user_data(user_data):
                     watched += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
@@ -776,9 +789,18 @@ class MediaLibraryKeeper(_PluginBase):
         is_series = item_type == "series"
         user_data = item.get("UserData") or {}
         total_episodes = self._to_int(item.get("RecursiveItemCount") or item.get("ChildCount"), 0) if is_series else 1
-        unplayed = self._to_int(user_data.get("UnplayedItemCount"), 0)
-        watched_episodes = max(total_episodes - unplayed, 0) if is_series else (1 if user_data.get("Played") else 0)
-        watched = bool(user_data.get("Played")) or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
+        played = self._is_played_user_data(user_data)
+        if is_series:
+            if played:
+                watched_episodes = total_episodes
+            elif user_data.get("UnplayedItemCount") is not None:
+                unplayed = self._to_int(user_data.get("UnplayedItemCount"), 0)
+                watched_episodes = max(total_episodes - unplayed, 0)
+            else:
+                watched_episodes = 0
+        else:
+            watched_episodes = 1 if played else 0
+        watched = played or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
         path = self._clean_text(item.get("Path"))
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         added_at = self._format_emby_date(item.get("DateCreated"))
