@@ -224,6 +224,7 @@ function compactSeedTask(task) {
     'record_id',
     'title',
     'downloader',
+    'original_downloader',
     'downloader_type',
     'download_hash',
     'source',
