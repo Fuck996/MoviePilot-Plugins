@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.22"
+    plugin_version = "0.3.23"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1842,6 +1842,23 @@ class MediaLibraryKeeper(_PluginBase):
         status = []
         for disk in disks:
             path = disk["path"]
+            if disk.get("unavailable"):
+                status.append(
+                    {
+                        "path": path,
+                        "display_name": disk.get("display_name") or path,
+                        "mount_point": disk.get("mount_point") or path,
+                        "device": disk.get("device") or "",
+                        "source_paths": disk.get("source_paths") or [],
+                        "total": 0,
+                        "free": 0,
+                        "free_percent": 0,
+                        "warning": True,
+                        "unavailable": True,
+                        "error": disk.get("error") or "路径在 MoviePilot 容器内不可访问",
+                    }
+                )
+                continue
             try:
                 usage = shutil.disk_usage(path)
                 free_percent = round(usage.free * 100 / usage.total, 2) if usage.total else 0
@@ -1915,7 +1932,19 @@ class MediaLibraryKeeper(_PluginBase):
     def _volume_status_for_path(self, path: Any, cache: Dict[Any, Dict[str, Any]]) -> Dict[str, Any]:
         disk_path = self._existing_disk_path(path)
         if not disk_path:
-            return {}
+            disk = self._unavailable_disk_identity(path)
+            if not disk:
+                return {}
+            key = disk.get("key")
+            if key not in cache:
+                cache[key] = {
+                    **disk,
+                    "total": 0,
+                    "free": 0,
+                    "free_percent": 0,
+                    "warning": True,
+                }
+            return cache[key]
         disk = self._disk_identity(disk_path)
         if not disk:
             return {}
@@ -1972,6 +2001,13 @@ class MediaLibraryKeeper(_PluginBase):
         for path in paths:
             disk_path = self._existing_disk_path(path)
             if not disk_path:
+                disk = self._unavailable_disk_identity(path)
+                if not disk:
+                    continue
+                key = disk["key"]
+                if key not in disks:
+                    disks[key] = {**disk, "source_paths": []}
+                disks[key]["source_paths"].append(self._path_preview(path))
                 continue
             disk = self._disk_identity(disk_path)
             if not disk:
@@ -1990,6 +2026,8 @@ class MediaLibraryKeeper(_PluginBase):
         if current.exists():
             return str(current if current.is_dir() else current.parent)
         for parent in current.parents:
+            if str(parent) == current.anchor:
+                break
             if parent.exists():
                 return str(parent)
         return ""
@@ -2003,12 +2041,40 @@ class MediaLibraryKeeper(_PluginBase):
         except OSError:
             return {}
         return {
-            "key": stat.st_dev,
+            "key": mount_point,
             "path": mount_point,
             "mount_point": mount_point,
             "device": device,
             "display_name": self._volume_display_name(mount_point, device),
         }
+
+    def _unavailable_disk_identity(self, path: Any) -> Dict[str, Any]:
+        mount_point = self._media_root_path(path)
+        if not mount_point:
+            return {}
+        return {
+            "key": f"unavailable:{mount_point}",
+            "path": mount_point,
+            "mount_point": mount_point,
+            "device": "",
+            "display_name": self._mount_name(mount_point),
+            "unavailable": True,
+            "error": "路径在 MoviePilot 容器内不可访问",
+        }
+
+    def _media_root_path(self, path: Any) -> str:
+        text = self._clean_text(path)
+        if not text:
+            return ""
+        current = Path(text)
+        if os.name == "nt":
+            anchor = Path(current.anchor)
+            parts = current.parts
+            return str(anchor / parts[1]) if current.anchor and len(parts) > 1 else str(anchor or current)
+        parts = current.parts
+        if current.is_absolute() and len(parts) > 1:
+            return "/" + parts[1]
+        return parts[0] if parts else text
 
     def _mount_info(self, path: str) -> Tuple[str, str]:
         if os.name == "nt":

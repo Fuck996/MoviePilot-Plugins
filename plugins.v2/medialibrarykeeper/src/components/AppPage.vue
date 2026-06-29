@@ -587,10 +587,13 @@ onMounted(() => {
               <VSheet v-for="disk in summary.disk_status" :key="disk.path" border rounded class="mlk-disk-row">
                 <div>
                   <div class="text-subtitle-2">{{ disk.display_name || disk.mount_point || '未知卷' }}</div>
-                  <div class="text-body-2 text-medium-emphasis">剩余 {{ formatBytes(disk.free) }} / {{ disk.free_percent }}%</div>
+                  <div v-if="disk.unavailable" class="text-body-2 text-warning">
+                    {{ disk.error || '路径不可访问' }}
+                  </div>
+                  <div v-else class="text-body-2 text-medium-emphasis">剩余 {{ formatBytes(disk.free) }} / {{ disk.free_percent }}%</div>
                 </div>
-                <VChip :color="disk.warning ? 'warning' : 'success'" variant="tonal">
-                  {{ disk.warning ? '容量紧张' : '容量正常' }}
+                <VChip :color="disk.unavailable || disk.warning ? 'warning' : 'success'" variant="tonal">
+                  {{ disk.unavailable ? '不可访问' : disk.warning ? '容量紧张' : '容量正常' }}
                 </VChip>
               </VSheet>
             </div>
