@@ -1,19 +1,27 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, a as toPayloadConfig } from './_plugin-vue_export-helper-DBmJ-E3u.js';
+import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper-BQW8z7Ve.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "mlk-config" };
 const _hoisted_2 = { class: "mlk-config-body" };
 const _hoisted_3 = { class: "mlk-config-grid" };
 
-const {onMounted,ref} = await importShared('vue');
+const {computed,onMounted,ref} = await importShared('vue');
 
 
 const _sfc_main = {
   __name: 'Config',
   props: {
+  api: {
+    type: Object,
+    default: () => ({}),
+  },
+  pluginId: {
+    type: String,
+    default: 'MediaLibraryKeeper',
+  },
   initialConfig: {
     type: Object,
     default: () => ({}),
@@ -26,13 +34,28 @@ const props = __props;
 
 const emit = __emit;
 const config = ref(toEditableConfig());
+const loadingOptions = ref(false);
+const mediaServerOptions = ref([]);
+const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`);
 
 function saveConfig() {
   emit('save', toPayloadConfig(config.value));
 }
 
-onMounted(() => {
+async function loadMediaServerOptions() {
+  if (!props.api?.get) return
+  loadingOptions.value = true;
+  try {
+    const response = await props.api.get(`${pluginBase.value}/status`);
+    mediaServerOptions.value = unwrapResponse(response)?.media_server_options || [];
+  } finally {
+    loadingOptions.value = false;
+  }
+}
+
+onMounted(async () => {
   config.value = toEditableConfig(props.initialConfig);
+  await loadMediaServerOptions();
 });
 
 return (_ctx, _cache) => {
@@ -41,9 +64,10 @@ return (_ctx, _cache) => {
   const _component_VToolbar = _resolveComponent("VToolbar");
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VSwitch = _resolveComponent("VSwitch");
-  const _component_VCombobox = _resolveComponent("VCombobox");
+  const _component_VSelect = _resolveComponent("VSelect");
   const _component_VTextField = _resolveComponent("VTextField");
   const _component_VTextarea = _resolveComponent("VTextarea");
+  const _component_VAlert = _resolveComponent("VAlert");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createVNode(_component_VToolbar, {
@@ -51,7 +75,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[13] || (_cache[13] = _createElementVNode("div", { class: "text-h6 ms-3" }, "媒体库管家配置", -1)),
+        _cache[12] || (_cache[12] = _createElementVNode("div", { class: "text-h6 ms-3" }, "媒体库管家配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -97,16 +121,19 @@ return (_ctx, _cache) => {
         inset: "",
         label: "启用磁盘容量告警"
       }, null, 8, ["modelValue"]),
-      _createVNode(_component_VCombobox, {
+      _createVNode(_component_VSelect, {
         modelValue: config.value.mediaservers,
         "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((config.value.mediaservers) = $event)),
-        label: "媒体服务器名称",
-        hint: "输入 MoviePilot 媒体服务器名称，留空表示扫描所有 Emby。",
+        label: "媒体服务器",
+        items: mediaServerOptions.value,
         multiple: "",
         chips: "",
         clearable: "",
+        loading: loadingOptions.value,
+        disabled: !mediaServerOptions.value.length,
+        hint: "自动读取 MoviePilot 已配置的媒体服务器；留空表示扫描所有 Emby。",
         "persistent-hint": ""
-      }, null, 8, ["modelValue"]),
+      }, null, 8, ["modelValue", "items", "loading", "disabled"]),
       _createElementVNode("div", _hoisted_3, [
         _createVNode(_component_VTextField, {
           modelValue: config.value.disk_warning_free_gb,
@@ -139,18 +166,19 @@ return (_ctx, _cache) => {
         "auto-grow": "",
         rows: "3"
       }, null, 8, ["modelValue"]),
-      _createVNode(_component_VTextarea, {
-        modelValue: config.value.storage_paths,
-        "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((config.value.storage_paths) = $event)),
-        label: "磁盘容量检查路径",
-        hint: "每行一个路径；留空时会尝试使用 MoviePilot 的 LIBRARY_PATH / DOWNLOAD_PATH。",
-        "persistent-hint": "",
-        "auto-grow": "",
-        rows: "3"
-      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VAlert, {
+        type: "info",
+        variant: "tonal",
+        density: "comfortable"
+      }, {
+        default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
+          _createTextVNode(" 磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。 ", -1)
+        ]))]),
+        _: 1
+      }),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.ai_suggestions,
-        "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((config.value.ai_suggestions) = $event)),
+        "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((config.value.ai_suggestions) = $event)),
         color: "primary",
         inset: "",
         label: "允许 AI 参与清理建议排序",
@@ -158,7 +186,7 @@ return (_ctx, _cache) => {
       }, null, 8, ["modelValue"]),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.default_delete_source,
-        "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((config.value.default_delete_source) = $event)),
+        "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((config.value.default_delete_source) = $event)),
         color: "error",
         inset: "",
         label: "默认同时删除源文件"
@@ -169,6 +197,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-fb27228e"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7e7461ff"]]);
 
 export { Config as default };

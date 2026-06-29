@@ -1,3 +1,4 @@
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.2.1"
+    plugin_version = "0.2.2"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -132,7 +133,173 @@ class MediaLibraryKeeper(_PluginBase):
         return "vue", "dist/assets"
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        return [], self._config
+        media_server_options = self._media_server_options()
+        return [
+            {
+                "component": "VForm",
+                "content": [
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [
+                                    {"component": "VSwitch", "props": {"model": "enabled", "label": "启用插件"}}
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [
+                                    {"component": "VSwitch", "props": {"model": "show_sidebar_nav", "label": "显示侧边栏入口"}}
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [
+                                    {"component": "VSwitch", "props": {"model": "notify_enabled", "label": "启用通知"}}
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [
+                                    {"component": "VSwitch", "props": {"model": "disk_warning_enabled", "label": "启用磁盘容量告警"}}
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VSelect",
+                                        "props": {
+                                            "model": "mediaservers",
+                                            "label": "媒体服务器",
+                                            "items": media_server_options,
+                                            "multiple": True,
+                                            "chips": True,
+                                            "clearable": True,
+                                            "hint": "留空表示扫描所有 Emby 媒体服务器。",
+                                            "persistent-hint": True,
+                                            "disabled": not bool(media_server_options),
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "disk_warning_free_gb",
+                                            "label": "剩余容量阈值 GB",
+                                            "type": "number",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "disk_warning_free_percent",
+                                            "label": "剩余比例阈值 %",
+                                            "type": "number",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {"component": "VTextField", "props": {"model": "scan_cron", "label": "扫描周期 Cron"}}
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VTextarea",
+                                        "props": {
+                                            "model": "library_names",
+                                            "label": "限定媒体库名称",
+                                            "hint": "每行一个媒体库名称，留空表示全部媒体库。",
+                                            "persistent-hint": True,
+                                            "auto-grow": True,
+                                            "rows": 3,
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "info",
+                                            "variant": "tonal",
+                                            "text": "磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {"model": "ai_suggestions", "label": "允许 AI 参与清理建议排序", "disabled": True},
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {"model": "default_delete_source", "label": "默认同时删除源文件"},
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            }
+        ], self._config
 
     def get_page(self) -> List[dict]:
         return []
@@ -313,7 +480,6 @@ class MediaLibraryKeeper(_PluginBase):
             "default_delete_source": False,
             "mediaservers": [],
             "library_names": [],
-            "storage_paths": [],
         }
 
     @classmethod
@@ -325,7 +491,7 @@ class MediaLibraryKeeper(_PluginBase):
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
         normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
-        for key in ["mediaservers", "library_names", "storage_paths"]:
+        for key in ["mediaservers", "library_names"]:
             normalized[key] = cls._to_list(normalized.get(key))
         return normalized
 
@@ -692,7 +858,7 @@ class MediaLibraryKeeper(_PluginBase):
     def _notify_disk_warning(self, snapshot: Dict[str, Any]) -> None:
         if not self._config.get("disk_warning_enabled") or not self._config.get("notify_enabled"):
             return
-        disk_status = self._disk_status()
+        disk_status = self._disk_status(snapshot)
         risks = [item for item in disk_status if item.get("warning")]
         if not risks:
             return
@@ -723,7 +889,7 @@ class MediaLibraryKeeper(_PluginBase):
         media = snapshot.get("media", [])
         movies = [item for item in media if item.get("type") == "movie"]
         series = [item for item in media if item.get("type") == "series"]
-        disk_status = self._disk_status()
+        disk_status = self._disk_status(snapshot)
         return {
             "libraries": len({item.get("library") for item in media if item.get("library")}),
             "movies": len(movies),
@@ -752,8 +918,8 @@ class MediaLibraryKeeper(_PluginBase):
                 recommendations.append({**item, "reason": "已看完电影", "message": "已观看电影，可按需清理。"})
         return sorted(recommendations, key=lambda item: (item.get("watched") is False, -(int(item.get("size") or 0)), item.get("added_at") or ""))[:30]
 
-    def _disk_status(self) -> List[Dict[str, Any]]:
-        paths = self._storage_paths()
+    def _disk_status(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        paths = self._media_disk_paths(snapshot)
         status = []
         for path in paths:
             try:
@@ -773,21 +939,42 @@ class MediaLibraryKeeper(_PluginBase):
                 status.append({"path": path, "total": 0, "free": 0, "free_percent": 0, "warning": False, "error": str(err)})
         return status
 
-    def _storage_paths(self) -> List[str]:
-        paths = list(self._config.get("storage_paths") or [])
-        for key in ["LIBRARY_PATH", "DOWNLOAD_PATH"]:
-            value = getattr(settings, key, "")
+    def _media_disk_paths(self, snapshot: Optional[Dict[str, Any]] = None) -> List[str]:
+        snapshot = snapshot or self._load_snapshot()
+        paths = [item.get("path") for item in snapshot.get("media", []) if item.get("path")]
+        if not paths:
+            value = getattr(settings, "LIBRARY_PATH", "")
             if value:
                 paths.append(str(value))
+
         result = []
         seen = set()
         for path in paths:
-            text = self._clean_text(path)
-            if not text or text in seen or not Path(text).exists():
+            disk_path = self._existing_disk_path(path)
+            if not disk_path:
                 continue
-            seen.add(text)
-            result.append(text)
+            try:
+                stat = os.stat(disk_path)
+                key = stat.st_dev
+            except OSError:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(disk_path)
         return result
+
+    def _existing_disk_path(self, path: Any) -> str:
+        text = self._clean_text(path)
+        if not text:
+            return ""
+        current = Path(text)
+        if current.exists():
+            return str(current if current.is_dir() else current.parent)
+        for parent in current.parents:
+            if parent.exists():
+                return str(parent)
+        return ""
 
     @staticmethod
     def _capabilities() -> Dict[str, Any]:

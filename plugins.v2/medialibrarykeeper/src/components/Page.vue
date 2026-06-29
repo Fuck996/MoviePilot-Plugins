@@ -22,7 +22,7 @@ const pageRef = ref(null)
     <VToolbar density="comfortable" class="mlk-sticky-toolbar">
       <div class="text-h6 ms-3">媒体库管家</div>
       <VSpacer />
-      <VBtn icon="mdi-database-sync-outline" variant="text" :loading="pageRef?.scaning" @click="pageRef?.scanLibrary?.()" />
+      <VBtn icon="mdi-database-sync-outline" variant="text" :loading="pageRef?.scanning" @click="pageRef?.scanLibrary?.()" />
       <VBtn icon="mdi-content-save" variant="text" color="primary" :loading="pageRef?.saving" @click="pageRef?.saveConfig()" />
       <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
     </VToolbar>

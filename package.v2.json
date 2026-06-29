@@ -3,13 +3,14 @@
     "name": "媒体库管家",
     "description": "管理 Emby 媒体库观看进度、空间风险和清理计划。",
     "labels": "媒体库,Emby,清理,空间管理",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "icon": "emby.png",
     "author": "fuck996",
     "level": 1,
     "system_version": ">=2.13.2",
     "release": true,
     "history": {
+      "v0.2.2": "媒体服务器配置改为自动拉取 MoviePilot 已配置服务并下拉选择；磁盘容量跟随 Emby 媒体路径自动识别多挂载盘。",
       "v0.2.1": "修正插件市场作者署名为 fuck996，并重新发布以刷新元数据缓存。",
       "v0.2.0": "接入 Emby 媒体库扫描、整理记录匹配、清理计划确认、StorageChain 删除与磁盘容量通知。",
       "v0.1.0": "新增媒体库管家插件骨架、Vue 联邦管理页、清理计划预览和安全阻止执行边界。"

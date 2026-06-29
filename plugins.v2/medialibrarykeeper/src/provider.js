@@ -18,7 +18,6 @@ export function createDefaultConfig() {
     default_delete_source: false,
     mediaservers: [],
     library_names: [],
-    storage_paths: [],
   }
 }
 
@@ -28,7 +27,7 @@ export function cloneConfig(config) {
 
 export function toEditableConfig(config) {
   const cloned = cloneConfig(config)
-  for (const key of ['library_names', 'storage_paths']) {
+  for (const key of ['library_names']) {
     if (Array.isArray(cloned[key])) {
       cloned[key] = cloned[key].join('\n')
     }
@@ -38,7 +37,7 @@ export function toEditableConfig(config) {
 
 export function toPayloadConfig(config) {
   const cloned = cloneConfig(config)
-  for (const key of ['library_names', 'storage_paths']) {
+  for (const key of ['library_names']) {
     if (typeof cloned[key] === 'string') {
       cloned[key] = cloned[key]
         .split('\n')

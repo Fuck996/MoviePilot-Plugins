@@ -474,14 +474,9 @@ onMounted(loadStatus)
               auto-grow
               rows="3"
             />
-            <VTextarea
-              v-model="configDraft.storage_paths"
-              label="磁盘容量检查路径"
-              hint="每行一个路径；留空时会尝试使用 MoviePilot 的 LIBRARY_PATH / DOWNLOAD_PATH。"
-              persistent-hint
-              auto-grow
-              rows="3"
-            />
+            <VAlert type="info" variant="tonal" density="comfortable">
+              磁盘容量会跟随 Emby 扫描到的媒体路径自动识别，支持多个挂载磁盘，无需手动配置路径。
+            </VAlert>
             <div class="mlk-switch-grid">
               <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
               <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
