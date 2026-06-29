@@ -1150,10 +1150,35 @@ onUnmounted(() => {
     <VDialog v-model="detailDialog" max-width="920">
       <VCard v-if="selectedMediaDetail">
         <div class="mlk-detail-layout">
-          <div class="mlk-detail-poster">
-            <VImg v-if="selectedMediaDetail.image_url" :src="resolveImageUrl(selectedMediaDetail.image_url)" cover />
-            <div v-else class="mlk-poster-fallback">
-              <VIcon :icon="selectedMediaDetail.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="54" />
+          <div class="mlk-detail-aside">
+            <div class="mlk-detail-poster">
+              <VImg v-if="selectedMediaDetail.image_url" :src="resolveImageUrl(selectedMediaDetail.image_url)" cover />
+              <div v-else class="mlk-poster-fallback">
+                <VIcon :icon="selectedMediaDetail.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="54" />
+              </div>
+            </div>
+            <div class="mlk-detail-aside-info">
+              <div class="text-subtitle-2 font-weight-medium">媒体摘要</div>
+              <div class="mlk-detail-aside-row">
+                <span>观看状态</span>
+                <strong>{{ watchStateText(selectedMediaDetail) }}</strong>
+              </div>
+              <div class="mlk-detail-aside-row">
+                <span>媒体大小</span>
+                <strong>{{ formatBytes(selectedMediaDetail.size) }}</strong>
+              </div>
+              <div class="mlk-detail-aside-row">
+                <span>所在盘</span>
+                <strong>{{ selectedMediaDetail.volume_name || '-' }}</strong>
+              </div>
+              <div class="mlk-detail-aside-row">
+                <span>卷剩余</span>
+                <strong>{{ selectedMediaDetail.volume_free_percent !== null && selectedMediaDetail.volume_free_percent !== undefined ? `${selectedMediaDetail.volume_free_percent}%` : '-' }}</strong>
+              </div>
+              <div class="mlk-detail-aside-row">
+                <span>{{ selectedMediaDetail.type === 'series' ? '末集添加' : '入库时间' }}</span>
+                <strong>{{ selectedMediaDetail.type === 'series' ? (selectedMediaDetail.last_episode_added_at || '-') : (selectedMediaDetail.added_at || '-') }}</strong>
+              </div>
             </div>
           </div>
           <div class="mlk-detail-content">
@@ -1737,9 +1762,51 @@ onUnmounted(() => {
   min-height: 520px;
 }
 
+.mlk-detail-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: rgba(var(--v-theme-surface-variant), 0.42);
+}
+
 .mlk-detail-poster {
-  min-height: 520px;
+  aspect-ratio: 2 / 3;
   background: rgba(var(--v-theme-surface-variant), 0.55);
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.mlk-detail-poster :deep(.v-img) {
+  height: 100%;
+}
+
+.mlk-detail-aside-info {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.mlk-detail-aside-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.mlk-detail-aside-row strong {
+  min-width: 0;
+  color: rgba(var(--v-theme-on-surface), 0.92);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .mlk-detail-content {
@@ -1808,7 +1875,7 @@ onUnmounted(() => {
   }
 
   .mlk-detail-poster {
-    min-height: 340px;
+    max-height: 420px;
   }
 }
 </style>

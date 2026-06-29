@@ -40,6 +40,7 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "所在盘" in source
     assert "mdi-harddisk" in source
     assert "mlk-media-facts" in source
+    assert "mlk-detail-aside-info" in source
 
 
 def test_medialibrarykeeper_does_not_register_api_on_plugin_reload() -> None:
