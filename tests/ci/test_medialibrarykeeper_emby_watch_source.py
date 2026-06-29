@@ -33,6 +33,15 @@ def test_medialibrarykeeper_frontend_has_no_watching_filter() -> None:
     assert "summary.value.watched" in source
 
 
+def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+
+    assert "mediaVolumeText" in source
+    assert "所在盘" in source
+    assert "mdi-harddisk" in source
+    assert "mlk-media-facts" in source
+
+
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
 

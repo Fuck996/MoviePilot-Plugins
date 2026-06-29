@@ -242,6 +242,19 @@ function watchStateText(item) {
   return item.type === 'series' ? `未播放 ${item.progress}` : '未播放'
 }
 
+function mediaVolumeText(item) {
+  return item.volume_name || item.volume_summary || '未识别'
+}
+
+function mediaAddedLabelText(item) {
+  const label = item.type === 'series' ? '末集' : '入库'
+  return `${label} ${item.last_episode_added_at || item.added_at || '-'}`
+}
+
+function mediaWatchedLabelText(item) {
+  return `观看 ${item.last_watched_at || '-'}`
+}
+
 function toggleSelected(item) {
   if (isSelected(item)) {
     selectedMedia.value = selectedMedia.value.filter(selected => selected.id !== item.id)
@@ -659,15 +672,29 @@ onMounted(() => {
                   />
                 </div>
                 <div class="mlk-media-body">
-                  <div class="mlk-media-title">{{ item.title }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ item.year || '未知年份' }} · {{ item.type_label }} · {{ item.library || item.server }}</div>
-                  <div class="mlk-chip-row">
-                    <VChip size="small" variant="tonal">{{ item.rating || '-' }} 分</VChip>
-                    <VChip size="small" :color="watchStateColor(item)" variant="tonal">{{ watchStateText(item) }}</VChip>
-                    <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
+                  <div class="mlk-media-head">
+                    <div class="mlk-media-title">{{ item.title }}</div>
+                    <div class="mlk-media-meta">{{ item.year || '未知年份' }} · {{ item.type_label }} · {{ item.library || item.server }}</div>
                   </div>
-                  <div class="text-caption text-medium-emphasis">末集 {{ item.last_episode_added_at || '-' }}</div>
-                  <div class="text-caption text-medium-emphasis">观看 {{ item.last_watched_at || '-' }}</div>
+                  <div class="mlk-chip-row mlk-chip-row--compact">
+                    <VChip size="x-small" variant="tonal">{{ item.rating || '-' }} 分</VChip>
+                    <VChip size="x-small" :color="watchStateColor(item)" variant="tonal">{{ watchStateText(item) }}</VChip>
+                    <VChip size="x-small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
+                  </div>
+                  <div class="mlk-media-facts">
+                    <div class="mlk-media-fact mlk-media-fact--volume">
+                      <VIcon icon="mdi-harddisk" size="14" />
+                      <span>所在盘 {{ mediaVolumeText(item) }}</span>
+                    </div>
+                    <div class="mlk-media-fact">
+                      <VIcon icon="mdi-calendar-import" size="14" />
+                      <span>{{ mediaAddedLabelText(item) }}</span>
+                    </div>
+                    <div class="mlk-media-fact">
+                      <VIcon icon="mdi-play-circle-outline" size="14" />
+                      <span>{{ mediaWatchedLabelText(item) }}</span>
+                    </div>
+                  </div>
                 </div>
               </VSheet>
             </div>
@@ -693,12 +720,20 @@ onMounted(() => {
                   </div>
                 </div>
                 <div class="mlk-media-body">
-                  <div class="mlk-media-title">{{ item.title }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ item.reason }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ item.message }}</div>
-                  <div class="mlk-chip-row">
-                    <VChip size="small" variant="tonal">{{ item.progress }}</VChip>
-                    <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
+                  <div class="mlk-media-head">
+                    <div class="mlk-media-title">{{ item.title }}</div>
+                    <div class="mlk-media-meta">{{ item.reason }}</div>
+                  </div>
+                  <div class="mlk-media-note">{{ item.message }}</div>
+                  <div class="mlk-chip-row mlk-chip-row--compact">
+                    <VChip size="x-small" variant="tonal">{{ item.progress }}</VChip>
+                    <VChip size="x-small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
+                  </div>
+                  <div class="mlk-media-facts">
+                    <div class="mlk-media-fact mlk-media-fact--volume">
+                      <VIcon icon="mdi-harddisk" size="14" />
+                      <span>所在盘 {{ mediaVolumeText(item) }}</span>
+                    </div>
                   </div>
                 </div>
               </VSheet>
@@ -1225,8 +1260,9 @@ onMounted(() => {
 
 .mlk-media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 12px;
+  align-items: stretch;
 }
 
 .mlk-stat-card,
@@ -1263,6 +1299,9 @@ onMounted(() => {
 .mlk-library-card,
 .mlk-media-card {
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   overflow: hidden;
   transition: border-color 0.16s ease, transform 0.16s ease;
 }
@@ -1296,15 +1335,32 @@ onMounted(() => {
   padding: 12px;
 }
 
+.mlk-media-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mlk-media-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .mlk-chip-row {
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.mlk-chip-row--compact {
+  min-height: 24px;
 }
 
 .mlk-poster {
   position: relative;
   aspect-ratio: 2 / 3;
   background: rgba(var(--v-theme-surface-variant), 0.55);
+  flex: 0 0 auto;
 }
 
 .mlk-select-btn {
@@ -1317,6 +1373,48 @@ onMounted(() => {
   min-height: 40px;
   font-weight: 600;
   line-height: 1.25;
+  display: -webkit-box;
+  overflow: hidden;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mlk-media-meta,
+.mlk-media-note,
+.mlk-media-fact span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mlk-media-meta,
+.mlk-media-note {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.mlk-media-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.mlk-media-fact {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.mlk-media-fact--volume {
+  color: rgb(var(--v-theme-primary));
 }
 
 .mlk-plan-card,
