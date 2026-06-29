@@ -661,7 +661,7 @@ return (_ctx, _cache) => {
                           }, {
                             default: _withCtx(() => [
                               _createElementVNode("div", null, [
-                                _createElementVNode("div", _hoisted_15, _toDisplayString(disk.display_name || disk.mount_point || disk.path), 1),
+                                _createElementVNode("div", _hoisted_15, _toDisplayString(disk.display_name || disk.mount_point || '未知卷'), 1),
                                 _createElementVNode("div", _hoisted_16, "剩余 " + _toDisplayString(_unref(formatBytes)(disk.free)) + " / " + _toDisplayString(disk.free_percent) + "%", 1)
                               ]),
                               _createVNode(_component_VChip, {
@@ -1394,6 +1394,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-e36e850b"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-cc3c884c"]]);
 
 export { AppPage as default };
