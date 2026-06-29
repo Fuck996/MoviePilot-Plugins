@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.19"
+    plugin_version = "0.3.20"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -218,7 +218,6 @@ class MediaLibraryKeeper(_PluginBase):
                 "summary": self._build_summary(snapshot),
                 "libraries": snapshot.get("libraries", []),
                 "media": snapshot.get("media", []),
-                "watch_audit": snapshot.get("watch_audit", []),
                 "recommendations": self._build_recommendations(snapshot),
                 "pending_plan": self.get_data(self.DATA_KEY_PENDING_PLAN) or None,
                 "history": self._load_history(),
@@ -295,11 +294,12 @@ class MediaLibraryKeeper(_PluginBase):
                 errors.append(f"{server_name}: {err}")
 
         media_items = self._attach_media_volume_info(self._dedupe_media(media))
+        watch_audit_result = self._build_watch_audit(watch_audit, media_items)
+        self._log_watch_audit(watch_audit_result)
         snapshot = {
             "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "libraries": self._dedupe_libraries(libraries),
             "media": media_items,
-            "watch_audit": self._build_watch_audit(watch_audit, media_items),
             "errors": errors,
         }
         self.save_data(self.DATA_KEY_SNAPSHOT, snapshot)
@@ -725,18 +725,29 @@ class MediaLibraryKeeper(_PluginBase):
         start = 0
         limit = 200
         include_types = self._library_include_types(library.get("type"))
-        played_item_ids = self._fetch_emby_item_ids(
+        played_filter_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, include_types, "Filters=IsPlayed"
+        )
+        played_boolean_ids = self._fetch_emby_item_ids(
             service, user_id, library_item_id, include_types, "IsPlayed=true"
         )
         resumable_item_ids = self._fetch_emby_item_ids(
             service, user_id, library_item_id, include_types, "Filters=IsResumable"
         )
-        played_episode_ids = self._fetch_emby_item_ids(
+        played_episode_filter_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, "Episode", "Filters=IsPlayed"
+        )
+        played_episode_boolean_ids = self._fetch_emby_item_ids(
             service, user_id, library_item_id, "Episode", "IsPlayed=true"
         )
         resumable_episode_ids = self._fetch_emby_item_ids(
             service, user_id, library_item_id, "Episode", "Filters=IsResumable"
         )
+        played_item_ids = played_filter_ids or played_boolean_ids
+        played_episode_ids = played_episode_filter_ids or played_episode_boolean_ids
+        played_source = "Filters=IsPlayed" if played_filter_ids else "IsPlayed=true" if played_boolean_ids else "UserData.Played"
+        user_data_played_ids = set()
+        user_data_resumable_ids = set()
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
@@ -757,13 +768,19 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
+                item_id = self._clean_text(item.get("Id"))
+                user_data = item.get("UserData") or {}
+                if self._is_played_user_data(user_data):
+                    user_data_played_ids.add(item_id)
+                if self._has_play_activity_user_data(user_data):
+                    user_data_resumable_ids.add(item_id)
                 normalized = self._normalize_emby_item(
                     item,
                     service_info,
                     server_name,
                     library,
-                    self._clean_text(item.get("Id")) in played_item_ids,
-                    self._clean_text(item.get("Id")) in resumable_item_ids,
+                    item_id in played_item_ids,
+                    item_id in resumable_item_ids,
                 )
                 if not normalized:
                     continue
@@ -805,6 +822,11 @@ class MediaLibraryKeeper(_PluginBase):
             if len(raw_items) < limit:
                 break
             start += limit
+        adopted_played_ids = played_item_ids or user_data_played_ids
+        adopted_resumable_ids = resumable_item_ids or user_data_resumable_ids
+        resumable_source = "Filters=IsResumable" if resumable_item_ids else "UserData.Playback"
+        if not played_filter_ids and not played_boolean_ids and user_data_played_ids:
+            played_source = "UserData.Played"
         audit = {
             "server": server_name,
             "library_id": library.get("id") or "",
@@ -812,13 +834,27 @@ class MediaLibraryKeeper(_PluginBase):
             "library": library.get("title") or "",
             "type": library.get("type") or "",
             "include_types": include_types,
-            "emby_played_ids": sorted(played_item_ids),
-            "emby_resumable_ids": sorted(resumable_item_ids),
+            "emby_played_ids": sorted(adopted_played_ids),
+            "emby_resumable_ids": sorted(adopted_resumable_ids),
+            "played_source": played_source,
+            "played_source_counts": {
+                "Filters=IsPlayed": len(played_filter_ids),
+                "IsPlayed=true": len(played_boolean_ids),
+                "UserData.Played": len(user_data_played_ids),
+            },
+            "resumable_source_counts": {
+                "Filters=IsResumable": len(resumable_item_ids),
+                "UserData.Playback": len(user_data_resumable_ids),
+            },
             "emby_played_episode_count": len(played_episode_ids),
+            "played_episode_source_counts": {
+                "Filters=IsPlayed": len(played_episode_filter_ids),
+                "IsPlayed=true": len(played_episode_boolean_ids),
+            },
             "emby_resumable_episode_count": len(resumable_episode_ids),
             "query": {
-                "played": "IsPlayed=true",
-                "resumable": "Filters=IsResumable",
+                "played": played_source,
+                "resumable": resumable_source,
             },
         }
         return items, audit
@@ -1195,6 +1231,23 @@ class MediaLibraryKeeper(_PluginBase):
                 }
             )
         return result
+
+    @staticmethod
+    def _log_watch_audit(audits: List[Dict[str, Any]]) -> None:
+        for audit in audits:
+            message = (
+                f"{audit.get('server')} / {audit.get('library')}: "
+                f"played source {audit.get('played_source')} "
+                f"{audit.get('emby_played_count')}/{audit.get('plugin_played_count')}, "
+                f"resumable source {(audit.get('query') or {}).get('resumable')} "
+                f"{audit.get('emby_resumable_count')}/{audit.get('plugin_watching_count')}, "
+                f"played counts {audit.get('played_source_counts')}, "
+                f"resumable counts {audit.get('resumable_source_counts')}"
+            )
+            if audit.get("played_match") and audit.get("resumable_match"):
+                logger.debug(f"媒体库管家播放状态审计通过：{message}")
+            else:
+                logger.warning(f"媒体库管家播放状态审计差异：{message}")
 
     @staticmethod
     def _audit_samples(item_ids: List[str], media_index: Dict[str, Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
@@ -1816,7 +1869,6 @@ class MediaLibraryKeeper(_PluginBase):
         movies = [item for item in media if item.get("type") == "movie"]
         series = [item for item in media if item.get("type") == "series"]
         disk_status = self._disk_status(snapshot)
-        watch_audit = snapshot.get("watch_audit", [])
         return {
             "libraries": len(libraries) or len({item.get("library") for item in media if item.get("library")}),
             "movies": len(movies),
@@ -1827,11 +1879,6 @@ class MediaLibraryKeeper(_PluginBase):
             "estimated_reclaim_size": sum(int(item.get("size") or 0) for item in media if item.get("watched")),
             "disk_warning": any(item.get("warning") for item in disk_status),
             "disk_status": disk_status,
-            "watch_audit_warning": any(
-                not item.get("played_match", True) or not item.get("resumable_match", True)
-                for item in watch_audit
-            ),
-            "watch_audit": watch_audit,
             "last_scan_at": snapshot.get("scanned_at"),
             "connection_state": "connected" if media else "not_scanned",
             "errors": snapshot.get("errors", []),
