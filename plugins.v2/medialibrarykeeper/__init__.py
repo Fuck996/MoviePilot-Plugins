@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.6"
+    plugin_version = "0.3.7"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -197,6 +197,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "history": self._load_history(),
                 "capabilities": self._capabilities(),
                 "media_server_options": self._media_server_options(),
+                "cache": self._cache_meta(snapshot),
                 "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
         )
@@ -1098,6 +1099,18 @@ class MediaLibraryKeeper(_PluginBase):
     def _load_snapshot(self) -> Dict[str, Any]:
         snapshot = self.get_data(self.DATA_KEY_SNAPSHOT) or {}
         return snapshot if isinstance(snapshot, dict) else {}
+
+    @staticmethod
+    def _cache_meta(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        libraries = snapshot.get("libraries") or []
+        media = snapshot.get("media") or []
+        return {
+            "source": "database",
+            "has_snapshot": bool(snapshot),
+            "scanned_at": snapshot.get("scanned_at"),
+            "library_count": len(libraries),
+            "media_count": len(media),
+        }
 
     def _build_summary(self, snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         snapshot = snapshot or self._load_snapshot()

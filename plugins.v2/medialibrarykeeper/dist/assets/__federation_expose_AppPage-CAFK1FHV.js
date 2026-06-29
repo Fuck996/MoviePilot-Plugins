@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper-DOAZq3HS.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, u as unwrapResponse, a as toPayloadConfig, r as readStatusCache, w as writeStatusCache } from './_plugin-vue_export-helper-HIHtRJl9.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers} = await importShared('vue');
 
@@ -310,11 +310,19 @@ async function loadStatus() {
   }
 }
 
-function applyStatus(data) {
+function loadCachedStatus() {
+  const cached = readStatusCache(props.pluginId);
+  if (cached) applyStatus(cached, { persist: false });
+}
+
+function applyStatus(data, options = {}) {
   if (!data) return
   status.value = data;
   configDraft.value = toEditableConfig(status.value.config);
   deleteSource.value = Boolean(configDraft.value.default_delete_source);
+  if (options.persist !== false) {
+    writeStatusCache(props.pluginId, data);
+  }
 }
 
 async function saveConfig() {
@@ -455,7 +463,10 @@ __expose({
   scanning,
 });
 
-onMounted(loadStatus);
+onMounted(() => {
+  loadCachedStatus();
+  loadStatus();
+});
 
 return (_ctx, _cache) => {
   const _component_VSpacer = _resolveComponent("VSpacer");
@@ -1570,6 +1581,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-347acefd"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-45f1cc9d"]]);
 
 export { AppPage as default };

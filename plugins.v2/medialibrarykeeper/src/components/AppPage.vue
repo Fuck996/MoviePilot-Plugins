@@ -5,9 +5,11 @@ import {
   formatBytes,
   formatNumber,
   planItemFromMedia,
+  readStatusCache,
   toEditableConfig,
   toPayloadConfig,
   unwrapResponse,
+  writeStatusCache,
 } from '../provider'
 
 const props = defineProps({
@@ -210,11 +212,19 @@ async function loadStatus() {
   }
 }
 
-function applyStatus(data) {
+function loadCachedStatus() {
+  const cached = readStatusCache(props.pluginId)
+  if (cached) applyStatus(cached, { persist: false })
+}
+
+function applyStatus(data, options = {}) {
   if (!data) return
   status.value = data
   configDraft.value = toEditableConfig(status.value.config)
   deleteSource.value = Boolean(configDraft.value.default_delete_source)
+  if (options.persist !== false) {
+    writeStatusCache(props.pluginId, data)
+  }
 }
 
 async function saveConfig() {
@@ -355,7 +365,10 @@ defineExpose({
   scanning,
 })
 
-onMounted(loadStatus)
+onMounted(() => {
+  loadCachedStatus()
+  loadStatus()
+})
 </script>
 
 <template>

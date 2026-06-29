@@ -27,6 +27,28 @@ export function createDefaultConfig() {
   }
 }
 
+export function statusCacheKey(pluginId = 'MediaLibraryKeeper') {
+  return `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:status:v1`
+}
+
+export function readStatusCache(pluginId) {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const cached = JSON.parse(localStorage.getItem(statusCacheKey(pluginId)) || 'null')
+    return cached?.status || null
+  } catch {
+    return null
+  }
+}
+
+export function writeStatusCache(pluginId, status) {
+  if (typeof localStorage === 'undefined' || !status) return
+  localStorage.setItem(statusCacheKey(pluginId), JSON.stringify({
+    cached_at: new Date().toISOString(),
+    status,
+  }))
+}
+
 export function cloneConfig(config) {
   return JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }))
 }

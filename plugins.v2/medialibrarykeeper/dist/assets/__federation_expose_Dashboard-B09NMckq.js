@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, f as formatNumber, b as formatBytes, u as unwrapResponse } from './_plugin-vue_export-helper-DOAZq3HS.js';
+import { _ as _export_sfc, f as formatNumber, b as formatBytes, r as readStatusCache, u as unwrapResponse, w as writeStatusCache } from './_plugin-vue_export-helper-HIHtRJl9.js';
 
 const {toDisplayString:_toDisplayString,createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,openBlock:_openBlock,createBlock:_createBlock,createCommentVNode:_createCommentVNode,unref:_unref,createTextVNode:_createTextVNode,withCtx:_withCtx,createVNode:_createVNode} = await importShared('vue');
 
@@ -56,13 +56,29 @@ async function loadStatus() {
   loading.value = true;
   try {
     const response = await props.api.get(`${pluginBase.value}/status`);
-    status.value = unwrapResponse(response) || status.value;
+    applyStatus(unwrapResponse(response));
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadStatus);
+function applyStatus(data, options = {}) {
+  if (!data) return
+  status.value = data;
+  if (options.persist !== false) {
+    writeStatusCache(props.pluginId, data);
+  }
+}
+
+function loadCachedStatus() {
+  const cached = readStatusCache(props.pluginId);
+  if (cached) applyStatus(cached, { persist: false });
+}
+
+onMounted(() => {
+  loadCachedStatus();
+  loadStatus();
+});
 
 return (_ctx, _cache) => {
   const _component_VProgressCircular = _resolveComponent("VProgressCircular");
@@ -120,6 +136,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Dashboard = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f3bed697"]]);
+const Dashboard = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-25eac94a"]]);
 
 export { Dashboard as default };

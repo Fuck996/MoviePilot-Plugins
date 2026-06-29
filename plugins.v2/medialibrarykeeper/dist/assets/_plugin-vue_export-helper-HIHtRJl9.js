@@ -27,6 +27,28 @@ function createDefaultConfig() {
   }
 }
 
+function statusCacheKey(pluginId = 'MediaLibraryKeeper') {
+  return `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:status:v1`
+}
+
+function readStatusCache(pluginId) {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const cached = JSON.parse(localStorage.getItem(statusCacheKey(pluginId)) || 'null');
+    return cached?.status || null
+  } catch {
+    return null
+  }
+}
+
+function writeStatusCache(pluginId, status) {
+  if (typeof localStorage === 'undefined' || !status) return
+  localStorage.setItem(statusCacheKey(pluginId), JSON.stringify({
+    cached_at: new Date().toISOString(),
+    status,
+  }));
+}
+
 function cloneConfig(config) {
   return JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }))
 }
@@ -90,4 +112,4 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, createDefaultConfig as c, formatNumber as f, planItemFromMedia as p, toEditableConfig as t, unwrapResponse as u };
+export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, createDefaultConfig as c, formatNumber as f, planItemFromMedia as p, readStatusCache as r, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };

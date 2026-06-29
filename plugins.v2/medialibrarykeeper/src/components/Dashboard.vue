@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { formatBytes, formatNumber, unwrapResponse } from '../provider'
+import { formatBytes, formatNumber, readStatusCache, unwrapResponse, writeStatusCache } from '../provider'
 
 const props = defineProps({
   api: {
@@ -38,13 +38,29 @@ async function loadStatus() {
   loading.value = true
   try {
     const response = await props.api.get(`${pluginBase.value}/status`)
-    status.value = unwrapResponse(response) || status.value
+    applyStatus(unwrapResponse(response))
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadStatus)
+function applyStatus(data, options = {}) {
+  if (!data) return
+  status.value = data
+  if (options.persist !== false) {
+    writeStatusCache(props.pluginId, data)
+  }
+}
+
+function loadCachedStatus() {
+  const cached = readStatusCache(props.pluginId)
+  if (cached) applyStatus(cached, { persist: false })
+}
+
+onMounted(() => {
+  loadCachedStatus()
+  loadStatus()
+})
 </script>
 
 <template>
