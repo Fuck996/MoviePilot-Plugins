@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.1"
+    plugin_version = "0.3.2"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -837,7 +837,8 @@ class MediaLibraryKeeper(_PluginBase):
         recommendations = self._build_recommendations(snapshot)[:8]
         lines = ["检测到磁盘容量低于阈值："]
         for risk in risks:
-            lines.append(f"- {risk['path']} 剩余 {self._human_size(risk['free'])}（{risk['free_percent']}%）")
+            title = risk.get("display_name") or risk.get("mount_point") or risk.get("path")
+            lines.append(f"- {title} 剩余 {self._human_size(risk['free'])}（{risk['free_percent']}%）")
         if recommendations:
             lines.append("\n建议优先检查：")
             for item in recommendations:
@@ -889,9 +890,10 @@ class MediaLibraryKeeper(_PluginBase):
         return sorted(recommendations, key=lambda item: (item.get("watched") is False, -(int(item.get("size") or 0)), item.get("added_at") or ""))[:30]
 
     def _disk_status(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        paths = self._media_disk_paths(snapshot)
+        disks = self._media_disks(snapshot)
         status = []
-        for path in paths:
+        for disk in disks:
+            path = disk["path"]
             try:
                 usage = shutil.disk_usage(path)
                 free_percent = round(usage.free * 100 / usage.total, 2) if usage.total else 0
@@ -899,6 +901,10 @@ class MediaLibraryKeeper(_PluginBase):
                 status.append(
                     {
                         "path": path,
+                        "display_name": disk.get("display_name") or path,
+                        "mount_point": disk.get("mount_point") or path,
+                        "device": disk.get("device") or "",
+                        "source_paths": disk.get("source_paths") or [],
                         "total": usage.total,
                         "free": usage.free,
                         "free_percent": free_percent,
@@ -906,10 +912,23 @@ class MediaLibraryKeeper(_PluginBase):
                     }
                 )
             except Exception as err:
-                status.append({"path": path, "total": 0, "free": 0, "free_percent": 0, "warning": False, "error": str(err)})
+                status.append(
+                    {
+                        "path": path,
+                        "display_name": disk.get("display_name") or path,
+                        "mount_point": disk.get("mount_point") or path,
+                        "device": disk.get("device") or "",
+                        "source_paths": disk.get("source_paths") or [],
+                        "total": 0,
+                        "free": 0,
+                        "free_percent": 0,
+                        "warning": False,
+                        "error": str(err),
+                    }
+                )
         return status
 
-    def _media_disk_paths(self, snapshot: Optional[Dict[str, Any]] = None) -> List[str]:
+    def _media_disks(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         snapshot = snapshot or self._load_snapshot()
         paths = []
         for item in snapshot.get("media", []):
@@ -921,22 +940,19 @@ class MediaLibraryKeeper(_PluginBase):
             if value:
                 paths.append(str(value))
 
-        result = []
-        seen = set()
+        disks: Dict[Any, Dict[str, Any]] = {}
         for path in paths:
             disk_path = self._existing_disk_path(path)
             if not disk_path:
                 continue
-            try:
-                stat = os.stat(disk_path)
-                key = stat.st_dev
-            except OSError:
+            disk = self._disk_identity(disk_path)
+            if not disk:
                 continue
-            if key in seen:
-                continue
-            seen.add(key)
-            result.append(disk_path)
-        return result
+            key = disk["key"]
+            if key not in disks:
+                disks[key] = {**disk, "source_paths": []}
+            disks[key]["source_paths"].append(self._path_preview(path))
+        return list(disks.values())
 
     def _existing_disk_path(self, path: Any) -> str:
         text = self._clean_text(path)
@@ -949,6 +965,116 @@ class MediaLibraryKeeper(_PluginBase):
             if parent.exists():
                 return str(parent)
         return ""
+
+    def _disk_identity(self, path: str) -> Dict[str, Any]:
+        mount_point, device = self._mount_info(path)
+        if not mount_point:
+            return {}
+        try:
+            stat = os.stat(mount_point)
+        except OSError:
+            return {}
+        return {
+            "key": stat.st_dev,
+            "path": mount_point,
+            "mount_point": mount_point,
+            "device": device,
+            "display_name": self._volume_display_name(mount_point, device),
+        }
+
+    def _mount_info(self, path: str) -> Tuple[str, str]:
+        if os.name == "nt":
+            mount_point = Path(path).anchor or path
+            return mount_point, mount_point.rstrip("\\/")
+        mount_points = self._linux_mount_points()
+        normalized = os.path.realpath(path)
+        for mount_point, device in mount_points:
+            real_mount = os.path.realpath(mount_point)
+            if normalized == real_mount or normalized.startswith(real_mount.rstrip("/") + "/"):
+                return mount_point, device
+        return "/", ""
+
+    @staticmethod
+    def _linux_mount_points() -> List[Tuple[str, str]]:
+        mountinfo = Path("/proc/self/mountinfo")
+        if not mountinfo.exists():
+            return [("/", "")]
+        points: List[Tuple[str, str]] = []
+        try:
+            for line in mountinfo.read_text(encoding="utf-8", errors="ignore").splitlines():
+                parts = line.split()
+                if len(parts) < 10 or "-" not in parts:
+                    continue
+                separator = parts.index("-")
+                mount_point = MediaLibraryKeeper._decode_mountinfo_path(parts[4])
+                device = parts[separator + 2] if len(parts) > separator + 2 else ""
+                if mount_point:
+                    points.append((mount_point, device))
+        except Exception:
+            return [("/", "")]
+        return sorted(points, key=lambda item: len(item[0]), reverse=True) or [("/", "")]
+
+    @staticmethod
+    def _decode_mountinfo_path(path: str) -> str:
+        return path.replace("\\040", " ").replace("\\011", "\t").replace("\\012", "\n").replace("\\134", "\\")
+
+    def _volume_display_name(self, mount_point: str, device: str = "") -> str:
+        if os.name == "nt":
+            label = self._windows_volume_label(mount_point)
+            return label or mount_point.rstrip("\\/") or mount_point
+        label = self._linux_volume_label(device)
+        if label:
+            return label
+        return self._mount_name(mount_point)
+
+    @staticmethod
+    def _windows_volume_label(mount_point: str) -> str:
+        try:
+            import ctypes
+
+            root = str(Path(mount_point).anchor or mount_point)
+            volume_name = ctypes.create_unicode_buffer(261)
+            result = ctypes.windll.kernel32.GetVolumeInformationW(
+                ctypes.c_wchar_p(root),
+                volume_name,
+                len(volume_name),
+                None,
+                None,
+                None,
+                None,
+                0,
+            )
+            return volume_name.value if result and volume_name.value else ""
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _linux_volume_label(device: str) -> str:
+        if not device or not device.startswith("/dev/"):
+            return ""
+        label_dir = Path("/dev/disk/by-label")
+        if not label_dir.exists():
+            return ""
+        try:
+            device_real = os.path.realpath(device)
+            for label in label_dir.iterdir():
+                if os.path.realpath(label) == device_real:
+                    return label.name
+        except Exception:
+            return ""
+        return ""
+
+    @staticmethod
+    def _mount_name(mount_point: str) -> str:
+        normalized = mount_point.replace("\\", "/").strip("/")
+        if not normalized:
+            return "根目录"
+        parts = [part for part in normalized.split("/") if part]
+        if not parts:
+            return mount_point
+        if parts[0] in {"mnt", "media", "run", "volume1", "volume2", "volumes"} and len(parts) > 1:
+            return parts[1]
+        return parts[0]
 
     @staticmethod
     def _capabilities() -> Dict[str, Any]:
