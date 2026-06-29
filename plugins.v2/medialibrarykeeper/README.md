@@ -27,3 +27,11 @@ npm run build
 ```
 
 构建产物位于 `dist/assets`，MoviePilot 通过 `remoteEntry.js` 加载远程组件。
+
+## GitHub Actions 自动构建
+
+仓库已添加 `Build MediaLibraryKeeper` workflow：
+
+- PR 中修改前端源码时自动执行构建校验。
+- `main` 分支修改前端源码后自动构建 `dist` 并提交产物。
+- Release 打包前会再次构建 Vue 产物，确保发布包包含当前源码对应的远程组件。

@@ -20,6 +20,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -96,6 +101,11 @@ jobs:
                 fi
                 echo "$tag" >> processed_tags.txt
                 continue
+              fi
+
+              if [ -f "$plugin_dir/package.json" ] && [ -f "$plugin_dir/vite.config.js" ]; then
+                echo "Building frontend assets in $plugin_dir"
+                (cd "$plugin_dir" && npm install --no-package-lock --registry=https://registry.npmmirror.com && npm run build)
               fi
 
               echo "Packing $plugin_id from $plugin_dir -> $asset"
