@@ -43,7 +43,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.35"
+    plugin_version = "0.3.36"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2172,16 +2172,26 @@ class MediaLibraryKeeper(_PluginBase):
             if task.get("record_id") in successful_record_ids or self._download_task_matches_deleted_paths(task, deleted_dest_paths)
         ])
         if not tasks:
+            logger.info(
+                f"媒体库管家保种任务删除：未找到可删除任务，plan={plan.get('id')}，"
+                f"successful_records={len(successful_record_ids)}，deleted_dest_paths={len(deleted_dest_paths)}"
+            )
             return [], []
 
         helper = DownloaderHelper()
         deleted: List[Dict[str, Any]] = []
         failed: List[Dict[str, Any]] = []
+        logger.info(f"媒体库管家保种任务删除开始：plan={plan.get('id')}，tasks={len(tasks)}")
         for task in tasks:
             try:
                 deleted.append(self._delete_seed_task_from_configured_downloaders(helper, task))
             except Exception as err:
+                logger.warning(
+                    f"媒体库管家保种任务删除失败：title={task.get('title')}，hash={task.get('download_hash')}，"
+                    f"original_downloader={task.get('original_downloader') or task.get('downloader')}，error={err}"
+                )
                 failed.append({**task, "error": str(err)})
+        logger.info(f"媒体库管家保种任务删除结束：plan={plan.get('id')}，deleted={len(deleted)}，failed={len(failed)}")
         return deleted, failed
 
     def _delete_seed_task_from_configured_downloaders(self, helper: DownloaderHelper, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -2190,16 +2200,31 @@ class MediaLibraryKeeper(_PluginBase):
             raise RuntimeError("Missing download hash")
         candidates = self._configured_seed_cleanup_downloaders(helper)
         if not candidates:
+            logger.warning(
+                f"媒体库管家保种任务删除：没有可用下载器，title={task.get('title')}，"
+                f"hash={download_hash}，configured={self._config.get('downloaders') or []}"
+            )
             raise RuntimeError("No configured downloader can remove torrents")
 
         deleted_downloaders: List[str] = []
         attempts: List[str] = []
+        original_downloader = self._clean_text(task.get("original_downloader") or task.get("downloader"))
+        candidate_names = [downloader for downloader, _ in candidates]
+        logger.info(
+            f"媒体库管家保种任务删除尝试：title={task.get('title')}，hash={download_hash}，"
+            f"original_downloader={original_downloader}，candidates={candidate_names}"
+        )
         for downloader, service_info in candidates:
             module = getattr(service_info, "module", None)
             if not module or not hasattr(module, "remove_torrents"):
                 attempts.append(f"{downloader}: remove_torrents unavailable")
+                logger.warning(
+                    f"媒体库管家保种任务删除跳过：downloader={downloader}，hash={download_hash}，"
+                    "reason=remove_torrents unavailable"
+                )
                 continue
             try:
+                logger.info(f"媒体库管家保种任务删除调用：downloader={downloader}，hash={download_hash}，delete_file=False")
                 result = module.remove_torrents(
                     hashs=[download_hash],
                     delete_file=False,
@@ -2207,16 +2232,20 @@ class MediaLibraryKeeper(_PluginBase):
                 )
             except Exception as err:
                 attempts.append(f"{downloader}: {err}")
+                logger.warning(f"媒体库管家保种任务删除异常：downloader={downloader}，hash={download_hash}，error={err}")
                 continue
             if result is True:
                 deleted_downloaders.append(downloader)
+                logger.info(f"媒体库管家保种任务删除返回成功：downloader={downloader}，hash={download_hash}")
             else:
                 attempts.append(f"{downloader}: returned failure")
+                logger.warning(
+                    f"媒体库管家保种任务删除返回失败：downloader={downloader}，hash={download_hash}，result={result}"
+                )
 
         if not deleted_downloaders:
             raise RuntimeError("; ".join(attempts) or "Downloader returned failure")
 
-        original_downloader = self._clean_text(task.get("original_downloader") or task.get("downloader"))
         return {
             **task,
             "downloader": ",".join(deleted_downloaders),
@@ -2234,10 +2263,16 @@ class MediaLibraryKeeper(_PluginBase):
             if not downloader or downloader in seen:
                 continue
             seen.add(downloader)
-            service_info = helper.get_service(name=downloader)
+            try:
+                service_info = helper.get_service(name=downloader)
+            except Exception as err:
+                logger.warning(f"媒体库管家保种任务删除：读取下载器失败，downloader={downloader}，error={err}")
+                continue
             dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
             if dtype in self.SUPPORTED_DOWNLOADER_TYPES:
                 result.append((downloader, service_info))
+            else:
+                logger.warning(f"媒体库管家保种任务删除：下载器不可用或类型不支持，downloader={downloader}，type={dtype}")
         return result
 
     def _download_task_matches_deleted_paths(self, task: Dict[str, Any], deleted_paths: List[Any]) -> bool:

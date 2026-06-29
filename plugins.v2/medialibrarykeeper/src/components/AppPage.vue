@@ -34,7 +34,8 @@ const props = defineProps({
 
 const loading = ref(false)
 const saving = ref(false)
-const planning = ref(false)
+const creatingPlan = ref(false)
+const updatingPlan = ref(false)
 const scanning = ref(false)
 const ruleScanning = ref(false)
 const executing = ref(false)
@@ -53,6 +54,7 @@ const selectedHistoryItem = ref(null)
 const planTargetDialog = ref(false)
 const historyDetailDialog = ref(false)
 const planExpanded = ref(false)
+const selectedPlanExpanded = ref(false)
 const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
@@ -242,6 +244,15 @@ const planHeaders = [
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
   { title: '操作', key: 'actions', width: 132, sortable: false },
+]
+const selectedPlanHeaders = [
+  { title: '媒体', key: 'title' },
+  { title: '类型', key: 'type_label', width: 100 },
+  { title: '观看状态', key: 'watch_state', width: 130 },
+  { title: '大小', key: 'size', width: 120 },
+  { title: '所在盘', key: 'volume_name', width: 120 },
+  { title: '时间', key: 'added_at', width: 190 },
+  { title: '操作', key: 'actions', width: 84, sortable: false },
 ]
 
 function isSelected(item) {
@@ -452,7 +463,7 @@ async function scanLibrary() {
 }
 
 async function createPlan() {
-  planning.value = true
+  creatingPlan.value = true
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan`, {
       item_ids: selectedMedia.value.map(item => item.id),
@@ -468,16 +479,17 @@ async function createPlan() {
     showToast('清理计划已生成')
     activeTab.value = 'plan'
     planExpanded.value = false
+    selectedPlanExpanded.value = false
   } catch (err) {
     showToast(err?.message || '生成清理计划失败', 'error')
   } finally {
-    planning.value = false
+    creatingPlan.value = false
   }
 }
 
 async function updatePlanItems(action, itemIds) {
   if (!pendingPlan.value?.id || !itemIds.length) return
-  planning.value = true
+  updatingPlan.value = true
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan/items`, {
       plan_id: pendingPlan.value.id,
@@ -494,7 +506,7 @@ async function updatePlanItems(action, itemIds) {
   } catch (err) {
     showToast(err?.message || '调整清理批次失败', 'error')
   } finally {
-    planning.value = false
+    updatingPlan.value = false
   }
 }
 
@@ -838,13 +850,49 @@ onUnmounted(() => {
               </div>
               <VSpacer />
               <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
-              <VBtn color="primary" variant="flat" :loading="planning" :disabled="!selectedMedia.length" @click="createPlan">
+              <VTooltip :text="selectedPlanExpanded ? '收起待生成明细' : '展开待生成明细'" location="top">
+                <template #activator="{ props: tooltipProps }">
+                  <VBtn
+                    v-bind="tooltipProps"
+                    :icon="selectedPlanExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                    variant="text"
+                    :disabled="!selectedMedia.length"
+                    @click="selectedPlanExpanded = !selectedPlanExpanded"
+                  />
+                </template>
+              </VTooltip>
+              <VBtn color="primary" variant="flat" :loading="creatingPlan" :disabled="!selectedMedia.length || updatingPlan" @click="createPlan">
                 生成新批次
               </VBtn>
-              <VBtn variant="tonal" :loading="planning" :disabled="!pendingPlan || !selectedMedia.length" @click="addSelectedToPlan">
+              <VBtn variant="tonal" :loading="updatingPlan" :disabled="!pendingPlan || !selectedMedia.length || creatingPlan" @click="addSelectedToPlan">
                 加入当前批次
               </VBtn>
             </VSheet>
+
+            <VExpandTransition>
+              <VSheet v-show="selectedPlanExpanded && selectedMedia.length" border rounded class="mlk-selection-detail">
+                <div class="mlk-section-header">
+                  <div>
+                    <div class="text-subtitle-2 font-weight-medium">待生成批次明细</div>
+                    <div class="text-caption text-medium-emphasis">这些条目只会在点击对应按钮后生成新批次或加入当前批次。</div>
+                  </div>
+                </div>
+                <VDataTable :headers="selectedPlanHeaders" :items="selectedMedia" density="compact">
+                  <template #item.type_label="{ item }">{{ item.type_label || (item.type === 'series' ? '剧集' : '电影') }}</template>
+                  <template #item.watch_state="{ item }">
+                    <VChip :color="watchStateColor(item)" variant="tonal" size="small">
+                      {{ watchStateText(item) }}
+                    </VChip>
+                  </template>
+                  <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
+                  <template #item.volume_name="{ item }">{{ mediaVolumeText(item) }}</template>
+                  <template #item.added_at="{ item }">{{ mediaAddedLabelText(item) }}</template>
+                  <template #item.actions="{ item }">
+                    <VBtn icon="mdi-minus-circle-outline" variant="text" color="error" @click="toggleSelected(item)" />
+                  </template>
+                </VDataTable>
+              </VSheet>
+            </VExpandTransition>
 
             <VSheet v-if="pendingPlan" border rounded class="mlk-plan-card">
               <div class="mlk-plan-summary">
@@ -933,7 +981,7 @@ onUnmounted(() => {
                             icon="mdi-minus-circle-outline"
                             variant="text"
                             color="error"
-                            :loading="planning"
+                            :loading="updatingPlan"
                             @click="removePlanItem(item)"
                           />
                         </template>
@@ -1242,7 +1290,7 @@ onUnmounted(() => {
               <VBtn variant="tonal" :color="isSelected(selectedMediaDetail) ? 'success' : 'primary'" @click="toggleSelected(selectedMediaDetail)">
                 {{ isSelected(selectedMediaDetail) ? '移出清理选择' : '加入清理选择' }}
               </VBtn>
-              <VBtn color="primary" variant="flat" :loading="planning" @click="createSinglePlan(selectedMediaDetail)">
+              <VBtn color="primary" variant="flat" :loading="creatingPlan" :disabled="updatingPlan" @click="createSinglePlan(selectedMediaDetail)">
                 为此项生成计划
               </VBtn>
             </div>
@@ -1639,13 +1687,19 @@ onUnmounted(() => {
 
 .mlk-plan-card,
 .mlk-plan-detail,
+.mlk-selection-detail,
 .mlk-plan-main {
   display: flex;
   flex-direction: column;
 }
 
-.mlk-plan-card {
+.mlk-plan-card,
+.mlk-selection-detail {
   gap: 12px;
+}
+
+.mlk-selection-detail {
+  padding: 14px;
 }
 
 .mlk-queue-card {

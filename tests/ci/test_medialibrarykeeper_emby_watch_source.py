@@ -44,6 +44,12 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "mlk-detail-aside-info" in source
     assert "selectedDetailInfoRows" in source
     assert "v-for=\"row in selectedDetailInfoRows\"" in source
+    assert "selectedPlanExpanded" in source
+    assert "selectedPlanHeaders" in source
+    assert "待生成批次明细" in source
+    assert ":loading=\"creatingPlan\"" in source
+    assert ":loading=\"updatingPlan\"" in source
+    assert "const planning = ref" not in source
     assert "background: rgba(var(--v-theme-surface-variant), 0.42);" not in source
     assert "border-right: 1px solid rgba(var(--v-theme-primary), 0.16);" in source
     assert "linear-gradient(180deg, rgba(var(--v-theme-primary), 0.18)" in source
@@ -84,6 +90,11 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert 'key = task.get("download_hash")' in source
     assert 'module.remove_torrents(' in source
     assert 'downloader=downloader' in source
+    assert "媒体库管家保种任务删除开始" in source
+    assert "媒体库管家保种任务删除尝试" in source
+    assert "媒体库管家保种任务删除调用" in source
+    assert "媒体库管家保种任务删除返回失败" in source
+    assert "媒体库管家保种任务删除异常" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
     assert "historyDetailDialog" in frontend
