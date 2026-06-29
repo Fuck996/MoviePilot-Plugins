@@ -1,0 +1,19 @@
+
+.mlk-dashboard[data-v-6bda5f1d] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  min-height: 180px;
+}
+.mlk-dashboard-head[data-v-6bda5f1d] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mlk-dashboard-grid[data-v-6bda5f1d] {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}

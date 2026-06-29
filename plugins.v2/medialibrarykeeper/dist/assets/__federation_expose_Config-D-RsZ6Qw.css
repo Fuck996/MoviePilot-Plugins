@@ -1,0 +1,12 @@
+
+.mlk-config-body[data-v-42d602bf] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+.mlk-config-grid[data-v-42d602bf] {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}

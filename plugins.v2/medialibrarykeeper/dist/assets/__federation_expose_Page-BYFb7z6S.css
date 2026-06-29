@@ -1,0 +1,7 @@
+
+.mlk-sticky-toolbar[data-v-02cc9de6] {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgb(var(--v-theme-surface));
+}

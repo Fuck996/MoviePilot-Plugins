@@ -848,6 +848,20 @@
       "v1.0.1": "新增 Agent Tokens 配额管理、供应商优先级切换和用量展示"
     }
   },
+  "MediaLibraryKeeper": {
+    "name": "媒体库管家",
+    "description": "管理 Emby 媒体库观看进度、空间风险和清理计划。",
+    "labels": "媒体库,Emby,清理,空间管理",
+    "version": "0.1.0",
+    "icon": "emby.png",
+    "author": "liuyuexi1987",
+    "level": 1,
+    "system_version": ">=2.13.2",
+    "release": true,
+    "history": {
+      "v0.1.0": "新增媒体库管家插件骨架、Vue 联邦管理页、清理计划预览和安全阻止执行边界。"
+    }
+  },
   "TraktCleaner": {
     "name": "Trakt 观看清理",
     "description": "根据 Trakt 播放记录，自动清理下载器中已观看的种子。",
