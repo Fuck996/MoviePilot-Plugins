@@ -135,7 +135,7 @@ const scanCronOptions = [
   { title: '每天 03:00', value: '0 3 * * *' },
   { title: '每周一 03:00', value: '0 3 * * 1' },
 ]
-const mediaWatchFilterOptions = ['全部', '已播放', '观看中', '未播放']
+const mediaWatchFilterOptions = ['全部', '已播放', '未播放']
 const cleanupWatchStateOptions = [
   { title: '不限制', value: 'any' },
   { title: '已看完', value: 'watched' },
@@ -155,7 +155,6 @@ const filteredMediaRows = computed(() => {
     if (typeFilter.value === '剧集' && item.type !== 'series') return false
     const watchState = resolveWatchState(item)
     if (watchFilter.value === '已播放' && watchState !== 'watched') return false
-    if (watchFilter.value === '观看中' && watchState !== 'watching') return false
     if (watchFilter.value === '未播放' && watchState !== 'unwatched') return false
     return true
   })
@@ -233,14 +232,12 @@ function resolveWatchState(item) {
 function watchStateColor(item) {
   const watchState = resolveWatchState(item)
   if (watchState === 'watched') return 'success'
-  if (watchState === 'watching') return 'info'
   return 'warning'
 }
 
 function watchStateText(item) {
   const watchState = resolveWatchState(item)
   if (watchState === 'watched') return item.type === 'series' ? `已播放 ${item.progress}` : '已播放'
-  if (watchState === 'watching') return item.type === 'series' ? `观看中 ${item.progress}` : '观看中'
   return item.type === 'series' ? `未播放 ${item.progress}` : '未播放'
 }
 
