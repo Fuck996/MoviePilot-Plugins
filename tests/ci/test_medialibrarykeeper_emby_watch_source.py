@@ -35,12 +35,21 @@ def test_medialibrarykeeper_frontend_has_no_watching_filter() -> None:
 
 def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     source = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    detail_rows_source = source.split("const selectedDetailInfoRows", 1)[1].split("function resolveImageUrl", 1)[0]
 
     assert "mediaVolumeText" in source
     assert "所在盘" in source
     assert "mdi-harddisk" in source
     assert "mlk-media-facts" in source
     assert "mlk-detail-aside-info" in source
+    assert "selectedDetailInfoRows" in source
+    assert "v-for=\"row in selectedDetailInfoRows\"" in source
+    assert "background: rgba(var(--v-theme-surface-variant), 0.42);" not in source
+    assert "border-right: 1px solid rgba(var(--v-theme-primary), 0.16);" in source
+    assert "linear-gradient(180deg, rgba(var(--v-theme-primary), 0.18)" in source
+    assert "所属卷" not in detail_rows_source
+    assert "卷剩余" not in detail_rows_source
+    assert "最后一集添加" not in detail_rows_source
 
 
 def test_medialibrarykeeper_does_not_register_api_on_plugin_reload() -> None:

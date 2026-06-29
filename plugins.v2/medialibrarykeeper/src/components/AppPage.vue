@@ -105,6 +105,24 @@ const historySeedRows = computed(() => [
   ...((selectedHistoryItem.value?.deleted_seed_tasks || []).map(item => ({ ...item, result: 'success' }))),
   ...((selectedHistoryItem.value?.failed_seed_tasks || []).map(item => ({ ...item, result: 'failed' }))),
 ])
+const selectedDetailInfoRows = computed(() => {
+  const item = selectedMediaDetail.value
+  if (!item) return []
+  const rows = [
+    { label: '服务器', value: item.server || '-' },
+  ]
+  if (item.type === 'series') {
+    rows.push({ label: '入库时间', value: item.added_at || '-' })
+  }
+  rows.push(
+    { label: '最后观看', value: item.last_watched_at || '-' },
+    { label: '首播/上映', value: item.premiere_date || '-' },
+  )
+  if (item.type === 'series') {
+    rows.push({ label: '集数', value: `${item.watched_episodes || 0}/${item.total_episodes || 0}` })
+  }
+  return rows
+})
 
 function resolveImageUrl(url) {
   if (!url || /^(https?:|data:|blob:|\/)/.test(url)) return url || ''
@@ -1193,44 +1211,14 @@ onUnmounted(() => {
             </div>
             <div class="mlk-chip-row">
               <VChip color="primary" variant="tonal">{{ selectedMediaDetail.rating || '-' }} 分</VChip>
-              <VChip :color="watchStateColor(selectedMediaDetail)" variant="tonal">{{ watchStateText(selectedMediaDetail) }}</VChip>
-              <VChip variant="tonal">{{ formatBytes(selectedMediaDetail.size) }}</VChip>
             </div>
             <p class="mlk-overview">
               {{ selectedMediaDetail.overview || '暂无简介。' }}
             </p>
             <div class="mlk-detail-grid">
-              <div>
-                <div class="text-caption text-medium-emphasis">服务器</div>
-                <div>{{ selectedMediaDetail.server }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">入库时间</div>
-                <div>{{ selectedMediaDetail.added_at || '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">最后一集添加</div>
-                <div>{{ selectedMediaDetail.last_episode_added_at || '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">最后观看</div>
-                <div>{{ selectedMediaDetail.last_watched_at || '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">首播/上映</div>
-                <div>{{ selectedMediaDetail.premiere_date || '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">集数</div>
-                <div>{{ selectedMediaDetail.type === 'series' ? `${selectedMediaDetail.watched_episodes}/${selectedMediaDetail.total_episodes}` : '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">所属卷</div>
-                <div>{{ selectedMediaDetail.volume_name || '-' }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-medium-emphasis">卷剩余</div>
-                <div>{{ selectedMediaDetail.volume_free_percent !== null && selectedMediaDetail.volume_free_percent !== undefined ? `${selectedMediaDetail.volume_free_percent}%` : '-' }}</div>
+              <div v-for="row in selectedDetailInfoRows" :key="row.label">
+                <div class="text-caption text-medium-emphasis">{{ row.label }}</div>
+                <div>{{ row.value }}</div>
               </div>
               <div class="mlk-detail-wide">
                 <div class="text-caption text-medium-emphasis">路径</div>
@@ -1772,12 +1760,13 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: rgba(var(--v-theme-surface-variant), 0.42);
+  background: rgb(var(--v-theme-surface));
+  border-right: 1px solid rgba(var(--v-theme-primary), 0.16);
 }
 
 .mlk-detail-poster {
   aspect-ratio: 2 / 3;
-  background: rgba(var(--v-theme-surface-variant), 0.55);
+  background: rgba(var(--v-theme-primary), 0.08);
   flex: 0 0 auto;
   overflow: hidden;
 }
@@ -1792,7 +1781,10 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.18), rgba(var(--v-theme-surface), 0.92)),
+    rgb(var(--v-theme-surface));
+  border-top: 1px solid rgba(var(--v-theme-primary), 0.22);
 }
 
 .mlk-detail-aside-row {
