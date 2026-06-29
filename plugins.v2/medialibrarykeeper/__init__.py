@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.4"
+    plugin_version = "0.3.5"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -230,8 +230,8 @@ class MediaLibraryKeeper(_PluginBase):
                 user_id = users[0].get("Id")
                 server_libraries = self._fetch_emby_libraries(service, service_info, server_name, user_id)
                 libraries.extend(server_libraries)
-                library_index = {item["item_id"]: item for item in server_libraries if item.get("item_id")}
-                media.extend(self._fetch_emby_items(service, service_info, server_name, user_id, library_index))
+                for library in server_libraries:
+                    media.extend(self._fetch_emby_items(service, service_info, server_name, user_id, library))
             except Exception as err:
                 logger.error(f"媒体库管家读取 Emby {server_name} 失败：{err}")
                 errors.append(f"{server_name}: {err}")
@@ -401,11 +401,15 @@ class MediaLibraryKeeper(_PluginBase):
         service_info: Any,
         server_name: str,
         user_id: str,
-        library_index: Dict[str, Dict[str, Any]],
+        library: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
+        library_item_id = self._clean_text(library.get("item_id"))
+        if not library_item_id:
+            return []
         items: List[Dict[str, Any]] = []
         start = 0
         limit = 200
+        include_types = self._library_include_types(library.get("type"))
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
@@ -413,7 +417,8 @@ class MediaLibraryKeeper(_PluginBase):
         )
         while True:
             url = (
-                f"[HOST]emby/Users/{user_id}/Items?Recursive=true&IncludeItemTypes=Movie,Series"
+                f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(library_item_id)}&Recursive=true"
+                f"&IncludeItemTypes={include_types}"
                 f"&Fields={fields}&ImageTypeLimit=1&EnableTotalRecordCount=false"
                 f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
             )
@@ -423,7 +428,7 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
-                normalized = self._normalize_emby_item(item, service_info, server_name, library_index)
+                normalized = self._normalize_emby_item(item, service_info, server_name, library)
                 if not normalized:
                     continue
                 if normalized.get("type") == "series":
@@ -449,6 +454,15 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             start += limit
         return items
+
+    @staticmethod
+    def _library_include_types(collection_type: Any) -> str:
+        library_type = str(collection_type or "").strip().lower()
+        if library_type == "movies":
+            return "Movie"
+        if library_type == "tvshows":
+            return "Series"
+        return "Movie,Series"
 
     def _fetch_series_episode_stats(self, service: Any, user_id: str, series_id: Any) -> Dict[str, Any]:
         item_id = self._clean_text(series_id)
@@ -505,7 +519,7 @@ class MediaLibraryKeeper(_PluginBase):
         item: Dict[str, Any],
         service_info: Any,
         server_name: str,
-        library_index: Dict[str, Dict[str, Any]],
+        library: Dict[str, Any],
     ) -> Dict[str, Any]:
         item_type = self._clean_text(item.get("Type")).lower()
         if item_type not in {"movie", "series"}:
@@ -517,7 +531,6 @@ class MediaLibraryKeeper(_PluginBase):
         watched_episodes = max(total_episodes - unplayed, 0) if is_series else (1 if user_data.get("Played") else 0)
         watched = bool(user_data.get("Played")) or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
         path = self._clean_text(item.get("Path"))
-        library = library_index.get(self._clean_text(item.get("ParentId"))) or {}
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         return {
             "id": f"{server_name}:{item.get('Id')}",

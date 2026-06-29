@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
 import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper-BQW8z7Ve.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,toDisplayString:_toDisplayString,renderList:_renderList,Fragment:_Fragment,unref:_unref,withModifiers:_withModifiers} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "mlk-page" };
@@ -98,7 +98,7 @@ const _hoisted_61 = { class: "mlk-chip-row" };
 const _hoisted_62 = { class: "mlk-detail-actions" };
 const _hoisted_63 = { class: "text-body-2" };
 
-const {computed,onMounted,ref} = await importShared('vue');
+const {computed,getCurrentInstance,onMounted,ref} = await importShared('vue');
 
 
 const _sfc_main = {
@@ -130,8 +130,11 @@ const saving = ref(false);
 const planning = ref(false);
 const scanning = ref(false);
 const executing = ref(false);
-const error = ref('');
-const notice = ref('');
+const fallbackToast = ref({
+  show: false,
+  text: '',
+  color: 'success',
+});
 const activeTab = ref('overview');
 const selectedMedia = ref([]);
 const selectedLibraryId = ref('');
@@ -169,6 +172,7 @@ const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMed
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0));
 const planReady = computed(() => pendingPlan.value?.status === 'ready');
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value));
+const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast;
 
 const filteredMediaRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase();
@@ -259,12 +263,11 @@ async function createSinglePlan(item) {
 
 async function loadStatus() {
   loading.value = true;
-  error.value = '';
   try {
     const response = await props.api.get(`${pluginBase.value}/status`);
     applyStatus(unwrapResponse(response));
   } catch (err) {
-    error.value = err?.message || '加载媒体库管家状态失败';
+    showToast(err?.message || '加载媒体库管家状态失败', 'error');
   } finally {
     loading.value = false;
   }
@@ -279,14 +282,12 @@ function applyStatus(data) {
 
 async function saveConfig() {
   saving.value = true;
-  error.value = '';
-  notice.value = '';
   try {
     const response = await props.api.post(`${pluginBase.value}/config`, toPayloadConfig(configDraft.value));
     applyStatus(unwrapResponse(response));
-    notice.value = '设置已保存';
+    showToast('设置已保存');
   } catch (err) {
-    error.value = err?.message || '保存设置失败';
+    showToast(err?.message || '保存设置失败', 'error');
   } finally {
     saving.value = false;
   }
@@ -294,19 +295,20 @@ async function saveConfig() {
 
 async function scanLibrary() {
   scanning.value = true;
-  error.value = '';
-  notice.value = '';
   try {
     const response = await props.api.post(`${pluginBase.value}/scan`, {});
     if (response?.success === false) {
-      error.value = response.message || '扫描媒体库失败';
+      showToast(response.message || '扫描媒体库失败', 'error');
       return
     }
     applyStatus(unwrapResponse(response));
-    notice.value = '媒体库扫描完成';
+    showToast('媒体库扫描完成');
+    if (summary.value.disk_warning) {
+      showToast('检测到磁盘容量低于阈值，请查看清理建议。', 'warning');
+    }
     activeTab.value = 'overview';
   } catch (err) {
-    error.value = err?.message || '扫描媒体库失败';
+    showToast(err?.message || '扫描媒体库失败', 'error');
   } finally {
     scanning.value = false;
   }
@@ -314,8 +316,6 @@ async function scanLibrary() {
 
 async function createPlan() {
   planning.value = true;
-  error.value = '';
-  notice.value = '';
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan`, {
       item_ids: selectedMedia.value.map(item => item.id),
@@ -323,15 +323,15 @@ async function createPlan() {
       delete_source: deleteSource.value,
     });
     if (response?.success === false) {
-      error.value = response.message || '生成清理计划失败';
+      showToast(response.message || '生成清理计划失败', 'error');
       return
     }
     const data = unwrapResponse(response);
     applyStatus(data?.status);
-    notice.value = '清理计划已生成';
+    showToast('清理计划已生成');
     activeTab.value = 'plan';
   } catch (err) {
-    error.value = err?.message || '生成清理计划失败';
+    showToast(err?.message || '生成清理计划失败', 'error');
   } finally {
     planning.value = false;
   }
@@ -345,26 +345,37 @@ function openExecuteDialog() {
 async function executePlan() {
   if (!pendingPlan.value?.id || !executeConfirmed.value) return
   executing.value = true;
-  error.value = '';
-  notice.value = '';
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/execute`, {
       plan_id: pendingPlan.value.id,
       confirm: true,
     });
     if (response?.success === false) {
-      error.value = response.message || '执行清理计划失败';
+      showToast(response.message || '执行清理计划失败', 'error');
       return
     }
     applyStatus(unwrapResponse(response));
-    notice.value = '清理计划已执行';
+    showToast('清理计划已执行');
     executeDialog.value = false;
     selectedMedia.value = [];
   } catch (err) {
-    error.value = err?.message || '执行清理计划失败';
+    showToast(err?.message || '执行清理计划失败', 'error');
   } finally {
     executing.value = false;
   }
+}
+
+function showToast(message, type = 'success') {
+  const toastMethod = toast?.[type] || toast;
+  if (typeof toastMethod === 'function') {
+    toastMethod(message);
+    return
+  }
+  fallbackToast.value = {
+    show: true,
+    text: message,
+    color: type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success',
+  };
 }
 
 __expose({
@@ -382,7 +393,6 @@ return (_ctx, _cache) => {
   const _component_VSpacer = _resolveComponent("VSpacer");
   const _component_VBtn = _resolveComponent("VBtn");
   const _component_VProgressLinear = _resolveComponent("VProgressLinear");
-  const _component_VAlert = _resolveComponent("VAlert");
   const _component_VIcon = _resolveComponent("VIcon");
   const _component_VSheet = _resolveComponent("VSheet");
   const _component_VTab = _resolveComponent("VTab");
@@ -394,6 +404,7 @@ return (_ctx, _cache) => {
   const _component_VWindowItem = _resolveComponent("VWindowItem");
   const _component_VTextField = _resolveComponent("VTextField");
   const _component_VSelect = _resolveComponent("VSelect");
+  const _component_VAlert = _resolveComponent("VAlert");
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VDataTable = _resolveComponent("VDataTable");
   const _component_VTextarea = _resolveComponent("VTextarea");
@@ -404,11 +415,12 @@ return (_ctx, _cache) => {
   const _component_VCheckbox = _resolveComponent("VCheckbox");
   const _component_VCardText = _resolveComponent("VCardText");
   const _component_VCardActions = _resolveComponent("VCardActions");
+  const _component_VSnackbar = _resolveComponent("VSnackbar");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     (!__props.hideTitle)
       ? (_openBlock(), _createElementBlock("div", _hoisted_2, [
-          _cache[26] || (_cache[26] = _createElementVNode("div", null, [
+          _cache[27] || (_cache[27] = _createElementVNode("div", null, [
             _createElementVNode("div", { class: "text-h5 font-weight-bold" }, "媒体库管家"),
             _createElementVNode("div", { class: "text-body-2 text-medium-emphasis" }, "按 Emby 媒体库入口管理观看进度和空间释放")
           ], -1)),
@@ -419,7 +431,7 @@ return (_ctx, _cache) => {
             loading: scanning.value,
             onClick: scanLibrary
           }, {
-            default: _withCtx(() => [...(_cache[25] || (_cache[25] = [
+            default: _withCtx(() => [...(_cache[26] || (_cache[26] = [
               _createTextVNode(" 立即扫描媒体库 ", -1)
             ]))]),
             _: 1
@@ -432,45 +444,6 @@ return (_ctx, _cache) => {
           indeterminate: "",
           color: "primary",
           rounded: ""
-        }))
-      : _createCommentVNode("", true),
-    (error.value)
-      ? (_openBlock(), _createBlock(_component_VAlert, {
-          key: 2,
-          type: "error",
-          variant: "tonal",
-          density: "comfortable"
-        }, {
-          default: _withCtx(() => [
-            _createTextVNode(_toDisplayString(error.value), 1)
-          ]),
-          _: 1
-        }))
-      : _createCommentVNode("", true),
-    (notice.value)
-      ? (_openBlock(), _createBlock(_component_VAlert, {
-          key: 3,
-          type: "success",
-          variant: "tonal",
-          density: "comfortable"
-        }, {
-          default: _withCtx(() => [
-            _createTextVNode(_toDisplayString(notice.value), 1)
-          ]),
-          _: 1
-        }))
-      : _createCommentVNode("", true),
-    (summary.value.disk_warning)
-      ? (_openBlock(), _createBlock(_component_VAlert, {
-          key: 4,
-          type: "warning",
-          variant: "tonal",
-          density: "comfortable"
-        }, {
-          default: _withCtx(() => [...(_cache[27] || (_cache[27] = [
-            _createTextVNode(" 检测到磁盘容量低于阈值，请优先查看清理建议。 ", -1)
-          ]))]),
-          _: 1
         }))
       : _createCommentVNode("", true),
     _createElementVNode("div", _hoisted_3, [
@@ -1391,12 +1364,24 @@ return (_ctx, _cache) => {
         })
       ]),
       _: 1
-    }, 8, ["modelValue"])
+    }, 8, ["modelValue"]),
+    _createVNode(_component_VSnackbar, {
+      modelValue: fallbackToast.value.show,
+      "onUpdate:modelValue": _cache[25] || (_cache[25] = $event => ((fallbackToast.value.show) = $event)),
+      color: fallbackToast.value.color,
+      location: "top right",
+      timeout: "3200"
+    }, {
+      default: _withCtx(() => [
+        _createTextVNode(_toDisplayString(fallbackToast.value.text), 1)
+      ]),
+      _: 1
+    }, 8, ["modelValue", "color"])
   ]))
 }
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-83a3df77"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-00e5c258"]]);
 
 export { AppPage as default };

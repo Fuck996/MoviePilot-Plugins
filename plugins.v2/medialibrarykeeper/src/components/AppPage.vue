@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import {
   createDefaultConfig,
   formatBytes,
@@ -34,8 +34,11 @@ const saving = ref(false)
 const planning = ref(false)
 const scanning = ref(false)
 const executing = ref(false)
-const error = ref('')
-const notice = ref('')
+const fallbackToast = ref({
+  show: false,
+  text: '',
+  color: 'success',
+})
 const activeTab = ref('overview')
 const selectedMedia = ref([])
 const selectedLibraryId = ref('')
@@ -73,6 +76,7 @@ const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMed
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0))
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
+const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
 
 const filteredMediaRows = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
@@ -163,12 +167,11 @@ async function createSinglePlan(item) {
 
 async function loadStatus() {
   loading.value = true
-  error.value = ''
   try {
     const response = await props.api.get(`${pluginBase.value}/status`)
     applyStatus(unwrapResponse(response))
   } catch (err) {
-    error.value = err?.message || '加载媒体库管家状态失败'
+    showToast(err?.message || '加载媒体库管家状态失败', 'error')
   } finally {
     loading.value = false
   }
@@ -183,14 +186,12 @@ function applyStatus(data) {
 
 async function saveConfig() {
   saving.value = true
-  error.value = ''
-  notice.value = ''
   try {
     const response = await props.api.post(`${pluginBase.value}/config`, toPayloadConfig(configDraft.value))
     applyStatus(unwrapResponse(response))
-    notice.value = '设置已保存'
+    showToast('设置已保存')
   } catch (err) {
-    error.value = err?.message || '保存设置失败'
+    showToast(err?.message || '保存设置失败', 'error')
   } finally {
     saving.value = false
   }
@@ -198,19 +199,20 @@ async function saveConfig() {
 
 async function scanLibrary() {
   scanning.value = true
-  error.value = ''
-  notice.value = ''
   try {
     const response = await props.api.post(`${pluginBase.value}/scan`, {})
     if (response?.success === false) {
-      error.value = response.message || '扫描媒体库失败'
+      showToast(response.message || '扫描媒体库失败', 'error')
       return
     }
     applyStatus(unwrapResponse(response))
-    notice.value = '媒体库扫描完成'
+    showToast('媒体库扫描完成')
+    if (summary.value.disk_warning) {
+      showToast('检测到磁盘容量低于阈值，请查看清理建议。', 'warning')
+    }
     activeTab.value = 'overview'
   } catch (err) {
-    error.value = err?.message || '扫描媒体库失败'
+    showToast(err?.message || '扫描媒体库失败', 'error')
   } finally {
     scanning.value = false
   }
@@ -218,8 +220,6 @@ async function scanLibrary() {
 
 async function createPlan() {
   planning.value = true
-  error.value = ''
-  notice.value = ''
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan`, {
       item_ids: selectedMedia.value.map(item => item.id),
@@ -227,15 +227,15 @@ async function createPlan() {
       delete_source: deleteSource.value,
     })
     if (response?.success === false) {
-      error.value = response.message || '生成清理计划失败'
+      showToast(response.message || '生成清理计划失败', 'error')
       return
     }
     const data = unwrapResponse(response)
     applyStatus(data?.status)
-    notice.value = '清理计划已生成'
+    showToast('清理计划已生成')
     activeTab.value = 'plan'
   } catch (err) {
-    error.value = err?.message || '生成清理计划失败'
+    showToast(err?.message || '生成清理计划失败', 'error')
   } finally {
     planning.value = false
   }
@@ -249,25 +249,36 @@ function openExecuteDialog() {
 async function executePlan() {
   if (!pendingPlan.value?.id || !executeConfirmed.value) return
   executing.value = true
-  error.value = ''
-  notice.value = ''
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/execute`, {
       plan_id: pendingPlan.value.id,
       confirm: true,
     })
     if (response?.success === false) {
-      error.value = response.message || '执行清理计划失败'
+      showToast(response.message || '执行清理计划失败', 'error')
       return
     }
     applyStatus(unwrapResponse(response))
-    notice.value = '清理计划已执行'
+    showToast('清理计划已执行')
     executeDialog.value = false
     selectedMedia.value = []
   } catch (err) {
-    error.value = err?.message || '执行清理计划失败'
+    showToast(err?.message || '执行清理计划失败', 'error')
   } finally {
     executing.value = false
+  }
+}
+
+function showToast(message, type = 'success') {
+  const toastMethod = toast?.[type] || toast
+  if (typeof toastMethod === 'function') {
+    toastMethod(message)
+    return
+  }
+  fallbackToast.value = {
+    show: true,
+    text: message,
+    color: type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success',
   }
 }
 
@@ -297,12 +308,6 @@ onMounted(loadStatus)
     </div>
 
     <VProgressLinear v-if="loading" indeterminate color="primary" rounded />
-    <VAlert v-if="error" type="error" variant="tonal" density="comfortable">{{ error }}</VAlert>
-    <VAlert v-if="notice" type="success" variant="tonal" density="comfortable">{{ notice }}</VAlert>
-    <VAlert v-if="summary.disk_warning" type="warning" variant="tonal" density="comfortable">
-      检测到磁盘容量低于阈值，请优先查看清理建议。
-    </VAlert>
-
     <div class="mlk-stats">
       <VSheet v-for="card in statCards" :key="card.label" border rounded class="mlk-stat-card">
         <VIcon :icon="card.icon" :color="card.color" size="28" />
@@ -698,6 +703,10 @@ onMounted(loadStatus)
         </VCardActions>
       </VCard>
     </VDialog>
+
+    <VSnackbar v-model="fallbackToast.show" :color="fallbackToast.color" location="top right" timeout="3200">
+      {{ fallbackToast.text }}
+    </VSnackbar>
   </div>
 </template>
 
