@@ -2247,6 +2247,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-2639bdbd"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-06110bef"]]);
 
 export { AppPage as default };
