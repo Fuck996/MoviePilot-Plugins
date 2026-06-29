@@ -60,6 +60,9 @@ const sortDesc = ref(true)
 const pageSize = ref(100)
 const executeDialog = ref(false)
 const executeConfirmed = ref(false)
+const deletePlanDialog = ref(false)
+const deletePlanConfirmed = ref(false)
+const deletingPlan = ref(false)
 const configDraft = ref(toEditableConfig())
 const status = ref({
   config: createDefaultConfig(),
@@ -100,6 +103,17 @@ function resolveImageUrl(url) {
 }
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0))
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
+const planExecutable = computed(() => Number(pendingPlan.value?.ready_count || 0) > 0)
+const planStatusText = computed(() => {
+  if (planReady.value) return '可执行'
+  if (planExecutable.value) return '部分可执行'
+  return '需处理'
+})
+const planStatusColor = computed(() => {
+  if (planReady.value) return 'success'
+  if (planExecutable.value) return 'warning'
+  return 'error'
+})
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
 const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
@@ -397,6 +411,34 @@ function openExecuteDialog() {
   executeDialog.value = true
 }
 
+function openDeletePlanDialog() {
+  deletePlanConfirmed.value = false
+  deletePlanDialog.value = true
+}
+
+async function deletePlan() {
+  if (!pendingPlan.value?.id || !deletePlanConfirmed.value) return
+  deletingPlan.value = true
+  try {
+    const response = await props.api.post(`${pluginBase.value}/cleanup/plan/delete`, {
+      plan_id: pendingPlan.value.id,
+      confirm: true,
+    })
+    if (response?.success === false) {
+      showToast(response.message || '删除清理批次失败', 'error')
+      return
+    }
+    applyStatus(unwrapResponse(response))
+    showToast(response?.message || '清理批次已删除')
+    deletePlanDialog.value = false
+    selectedMedia.value = []
+  } catch (err) {
+    showToast(err?.message || '删除清理批次失败', 'error')
+  } finally {
+    deletingPlan.value = false
+  }
+}
+
 async function executePlan() {
   if (!pendingPlan.value?.id || !executeConfirmed.value) return
   executing.value = true
@@ -658,8 +700,9 @@ onMounted(() => {
                   <div class="mlk-chip-row">
                     <VChip size="small" variant="tonal" color="info">电影 {{ pendingPlanStats.movies }}</VChip>
                     <VChip size="small" variant="tonal" color="success">剧集 {{ pendingPlanStats.series }}</VChip>
+                    <VChip size="small" variant="tonal" color="primary">可执行 {{ pendingPlan.ready_count || 0 }}/{{ pendingPlanItems.length }}</VChip>
                     <VChip size="small" variant="tonal" color="warning">预计释放 {{ formatBytes(pendingPlan.estimated_reclaim_size || pendingPlanStats.size) }}</VChip>
-                    <VChip :color="planReady ? 'success' : 'warning'" size="small" variant="tonal">{{ planReady ? '可执行' : '需处理' }}</VChip>
+                    <VChip :color="planStatusColor" size="small" variant="tonal">{{ planStatusText }}</VChip>
                   </div>
                 </div>
                 <div class="mlk-plan-actions">
@@ -673,14 +716,29 @@ onMounted(() => {
                       />
                     </template>
                   </VTooltip>
-                  <VTooltip text="执行当前清理批次" location="top">
+                  <VTooltip text="删除当前批次记录，不删除文件" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <span v-bind="tooltipProps">
+                        <VBtn
+                          color="error"
+                          variant="text"
+                          prepend-icon="mdi-close-circle-outline"
+                          :loading="deletingPlan"
+                          @click="openDeletePlanDialog"
+                        >
+                          删除批次
+                        </VBtn>
+                      </span>
+                    </template>
+                  </VTooltip>
+                  <VTooltip text="执行当前批次中已匹配的清理条目" location="top">
                     <template #activator="{ props: tooltipProps }">
                       <span v-bind="tooltipProps">
                         <VBtn
                           color="error"
                           variant="tonal"
                           prepend-icon="mdi-delete-alert-outline"
-                          :disabled="!planReady"
+                          :disabled="!planExecutable"
                           @click="openExecuteDialog"
                         >
                           执行清理
@@ -1006,9 +1064,12 @@ onMounted(() => {
         <VCardTitle>确认执行清理计划</VCardTitle>
         <VCardText>
           <div class="text-body-2">
-            本次计划将删除 {{ pendingPlan?.items?.length || 0 }} 个媒体条目关联文件，预计释放
+            本次计划将删除 {{ pendingPlan?.ready_count || 0 }} 个已匹配媒体条目关联文件，预计释放
             {{ formatBytes(pendingPlan?.estimated_reclaim_size) }}。执行成功后会删除对应整理记录。
           </div>
+          <VAlert v-if="pendingPlan && (pendingPlan.ready_count || 0) < pendingPlanItems.length" type="info" variant="tonal" density="comfortable" class="mt-4">
+            批次中还有 {{ pendingPlanItems.length - (pendingPlan.ready_count || 0) }} 个未匹配条目，本次不会执行这些条目。
+          </VAlert>
           <VAlert type="warning" variant="tonal" density="comfortable" class="mt-4">
             这是不可逆操作；请确认媒体库文件和源文件范围都符合预期。
           </VAlert>
@@ -1019,6 +1080,25 @@ onMounted(() => {
           <VBtn variant="text" @click="executeDialog = false">取消</VBtn>
           <VBtn color="error" variant="flat" :loading="executing" :disabled="!executeConfirmed" @click="executePlan">
             确认删除
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="deletePlanDialog" max-width="560">
+      <VCard>
+        <VCardTitle>删除当前清理批次</VCardTitle>
+        <VCardText>
+          <div class="text-body-2">
+            将删除批次 {{ pendingPlan?.batch_id || pendingPlan?.id }} 的待处理记录，不会删除媒体文件、源文件或整理记录。
+          </div>
+          <VCheckbox v-model="deletePlanConfirmed" color="error" label="我确认只删除当前批次记录" hide-details class="mt-4" />
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" @click="deletePlanDialog = false">取消</VBtn>
+          <VBtn color="error" variant="flat" :loading="deletingPlan" :disabled="!deletePlanConfirmed" @click="deletePlan">
+            删除批次
           </VBtn>
         </VCardActions>
       </VCard>

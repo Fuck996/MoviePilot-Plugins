@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.14"
+    plugin_version = "0.3.15"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -123,6 +123,13 @@ class MediaLibraryKeeper(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "生成清理计划",
+            },
+            {
+                "path": "/cleanup/plan/delete",
+                "endpoint": self.delete_cleanup_plan_api,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "删除当前清理批次",
             },
             {
                 "path": "/cleanup/execute",
@@ -355,6 +362,18 @@ class MediaLibraryKeeper(_PluginBase):
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
 
+    def delete_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
+        payload = payload or {}
+        plan_id = self._clean_text(payload.get("plan_id"))
+        confirm = bool(payload.get("confirm"))
+        pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
+        if not plan_id or pending_plan.get("id") != plan_id:
+            return schemas.Response(success=False, message="清理批次不存在或已失效")
+        if not confirm:
+            return schemas.Response(success=False, message="删除批次前需要页面确认。")
+        self.save_data(self.DATA_KEY_PENDING_PLAN, None)
+        return schemas.Response(success=True, message="已删除当前清理批次", data=self.get_status().data)
+
     def execute_cleanup_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
         plan_id = self._clean_text(payload.get("plan_id"))
@@ -364,8 +383,8 @@ class MediaLibraryKeeper(_PluginBase):
             return schemas.Response(success=False, message="清理计划不存在或已失效")
         if not confirm:
             return schemas.Response(success=False, message="执行清理前需要在页面确认删除范围。")
-        if pending_plan.get("status") != "ready":
-            return schemas.Response(success=False, message=pending_plan.get("message") or "清理计划尚未就绪，不能执行删除。")
+        if self._plan_ready_count(pending_plan) <= 0:
+            return schemas.Response(success=False, message=pending_plan.get("message") or "清理计划没有可执行条目。")
 
         result = self._execute_plan(pending_plan)
         history = self._load_history()
@@ -987,6 +1006,10 @@ class MediaLibraryKeeper(_PluginBase):
         }
 
     @staticmethod
+    def _plan_ready_count(plan: Dict[str, Any]) -> int:
+        return len([item for item in plan.get("items", []) if item.get("status") == "ready"])
+
+    @staticmethod
     def _plan_source_label(source: str) -> str:
         return {
             "scheduled": "定时计划",
@@ -1388,7 +1411,8 @@ class MediaLibraryKeeper(_PluginBase):
         return bool(left and right and (left == right or right.startswith(left + "/") or left.startswith(right + "/")))
 
     def _execute_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
-        targets = self._dedupe_targets([target for item in plan.get("items", []) for target in item.get("delete_targets", [])])
+        executable_items = [item for item in plan.get("items", []) if item.get("status") == "ready"]
+        targets = self._dedupe_targets([target for item in executable_items for target in item.get("delete_targets", [])])
         deleted_targets: List[Dict[str, Any]] = []
         failed_targets: List[Dict[str, Any]] = []
         record_status: Dict[Any, bool] = {}
@@ -1444,7 +1468,7 @@ class MediaLibraryKeeper(_PluginBase):
             "failed_seed_tasks": failed_seed_tasks,
             "deleted_targets": deleted_targets,
             "failed_targets": failed_targets,
-            "items": [{"title": item.get("title"), "type": item.get("type"), "size": item.get("size")} for item in plan.get("items", [])],
+            "items": [{"title": item.get("title"), "type": item.get("type"), "size": item.get("size")} for item in executable_items],
             "message": f"清理完成，删除 {len(deleted_targets)} 个文件，整理记录 {deleted_records} 条{seed_task_text}。" if success else f"清理未完全成功，失败 {len(failed_targets)} 项，请查看执行记录。",
         }
 
