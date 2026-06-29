@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.15"
+    plugin_version = "0.3.16"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -277,11 +277,10 @@ class MediaLibraryKeeper(_PluginBase):
         for server_name, service_info in services.items():
             service = service_info.instance
             try:
-                users = self._fetch_emby_users(service)
-                if not users:
-                    errors.append(f"{server_name} 未返回用户信息")
+                user_id = self._resolve_emby_user_id(service, service_info)
+                if not user_id:
+                    errors.append(f"{server_name} 未解析到 Emby 用户，请检查 MoviePilot 媒体服务器用户名配置。")
                     continue
-                user_id = users[0].get("Id")
                 server_libraries = self._fetch_emby_libraries(service, service_info, server_name, user_id)
                 libraries.extend(server_libraries)
                 for library in server_libraries:
@@ -649,6 +648,25 @@ class MediaLibraryKeeper(_PluginBase):
         response = service.get_data("[HOST]Users?&api_key=[APIKEY]")
         data = response.json() if hasattr(response, "json") else response
         return data if isinstance(data, list) else []
+
+    def _resolve_emby_user_id(self, service: Any, service_info: Any) -> str:
+        user_id = self._clean_text(getattr(service, "user", ""))
+        if user_id:
+            return user_id
+
+        users = self._fetch_emby_users(service)
+        username = self._clean_text(getattr(service, "_username", ""))
+        config = getattr(service_info, "config", None)
+        config_data = getattr(config, "config", {}) or {}
+        username = username or self._clean_text(config_data.get("username"))
+        if username:
+            for user in users:
+                if self._clean_text(user.get("Name")) == username:
+                    return self._clean_text(user.get("Id"))
+        for user in users:
+            if (user.get("Policy") or {}).get("IsAdministrator"):
+                return self._clean_text(user.get("Id"))
+        return self._clean_text((users[0] or {}).get("Id")) if users else ""
 
     def _fetch_emby_libraries(self, service: Any, service_info: Any, server_name: str, user_id: str) -> List[Dict[str, Any]]:
         response = service.get_data(f"[HOST]emby/Users/{user_id}/Views?api_key=[APIKEY]")
