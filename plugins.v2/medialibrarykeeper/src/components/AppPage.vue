@@ -294,9 +294,6 @@ onMounted(loadStatus)
       <VBtn prepend-icon="mdi-database-sync-outline" variant="tonal" :loading="scanning" @click="scanLibrary">
         立即扫描媒体库
       </VBtn>
-      <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
-        保存设置
-      </VBtn>
     </div>
 
     <VProgressLinear v-if="loading" indeterminate color="primary" rounded />
@@ -598,6 +595,11 @@ onMounted(loadStatus)
               <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
               <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
             </div>
+            <div class="mlk-settings-actions">
+              <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
+                保存设置
+              </VBtn>
+            </div>
           </div>
         </VWindowItem>
       </VWindow>
@@ -716,7 +718,8 @@ onMounted(loadStatus)
 .mlk-detail-head,
 .mlk-detail-actions,
 .mlk-chip-row,
-.mlk-filter-row {
+.mlk-filter-row,
+.mlk-settings-actions {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -858,6 +861,10 @@ onMounted(loadStatus)
 
 .mlk-settings {
   max-width: 960px;
+}
+
+.mlk-settings-actions {
+  justify-content: flex-end;
 }
 
 .mlk-detail-layout {

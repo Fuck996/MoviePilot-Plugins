@@ -35,7 +35,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.3"
+    plugin_version = "0.3.4"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -566,7 +566,11 @@ class MediaLibraryKeeper(_PluginBase):
         if not base_url:
             return ""
         item_id = quote(str(item.get("Id")))
-        return f"{base_url.rstrip('/')}/emby/Items/{item_id}/Images/Primary?maxHeight={max_height}&maxWidth={max_width}&quality=90"
+        params = f"maxHeight={max_height}&maxWidth={max_width}&quality=90"
+        api_key = self._service_api_key(service_info)
+        if api_key:
+            params = f"{params}&api_key={quote(api_key, safe='')}"
+        return f"{base_url.rstrip('/')}/emby/Items/{item_id}/Images/Primary?{params}"
 
     @staticmethod
     def _library_type_label(collection_type: str) -> str:
@@ -585,6 +589,16 @@ class MediaLibraryKeeper(_PluginBase):
     def _service_base_url(service_info: Any) -> str:
         candidates = [service_info, getattr(service_info, "config", None), getattr(service_info, "instance", None)]
         keys = ["host", "url", "server", "server_url", "address"]
+        return MediaLibraryKeeper._first_service_value(candidates, keys)
+
+    @staticmethod
+    def _service_api_key(service_info: Any) -> str:
+        candidates = [service_info, getattr(service_info, "config", None), getattr(service_info, "instance", None)]
+        keys = ["api_key", "apikey", "apiKey", "token", "access_token"]
+        return MediaLibraryKeeper._first_service_value(candidates, keys)
+
+    @staticmethod
+    def _first_service_value(candidates: List[Any], keys: List[str]) -> str:
         for candidate in candidates:
             if not candidate:
                 continue
