@@ -1,5 +1,5 @@
 <script setup>
-import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   createDefaultCleanupRule,
   createDefaultConfig,
@@ -49,7 +49,9 @@ const selectedLibraryId = ref('')
 const selectedMediaDetail = ref(null)
 const detailDialog = ref(false)
 const selectedPlanItem = ref(null)
+const selectedHistoryItem = ref(null)
 const planTargetDialog = ref(false)
+const historyDetailDialog = ref(false)
 const planExpanded = ref(false)
 const deleteSource = ref(false)
 const searchText = ref('')
@@ -63,6 +65,7 @@ const executeConfirmed = ref(false)
 const deletePlanDialog = ref(false)
 const deletePlanConfirmed = ref(false)
 const deletingPlan = ref(false)
+const queuePollTimer = ref(null)
 const configDraft = ref(toEditableConfig())
 const status = ref({
   config: createDefaultConfig(),
@@ -71,6 +74,7 @@ const status = ref({
   media: [],
   recommendations: [],
   pending_plan: null,
+  cleanup_queue: [],
   history: [],
   capabilities: {},
   media_server_options: [],
@@ -84,6 +88,7 @@ const mediaRows = computed(() => status.value.media || [])
 const recommendationRows = computed(() => status.value.recommendations || [])
 const pendingPlan = computed(() => status.value.pending_plan)
 const pendingPlanItems = computed(() => pendingPlan.value?.items || [])
+const cleanupQueueRows = computed(() => status.value.cleanup_queue || [])
 const pendingPlanStats = computed(() => pendingPlanItems.value.reduce((stats, item) => {
   if (item.type === 'movie') stats.movies += 1
   if (item.type === 'series') stats.series += 1
@@ -95,6 +100,11 @@ const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
 const downloaderOptions = computed(() => status.value.downloader_options || [])
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
+const historyDetailStats = computed(() => cleanupRecordStats(selectedHistoryItem.value || {}))
+const historySeedRows = computed(() => [
+  ...((selectedHistoryItem.value?.deleted_seed_tasks || []).map(item => ({ ...item, result: 'success' }))),
+  ...((selectedHistoryItem.value?.failed_seed_tasks || []).map(item => ({ ...item, result: 'failed' }))),
+])
 
 function resolveImageUrl(url) {
   if (!url || /^(https?:|data:|blob:|\/)/.test(url)) return url || ''
@@ -255,6 +265,28 @@ function mediaWatchedLabelText(item) {
   return `观看 ${item.last_watched_at || '-'}`
 }
 
+function cleanupRecordStats(item) {
+  const deletedTargets = item.deleted_targets || []
+  return {
+    mediaFiles: Number(item.deleted_media_files ?? deletedTargets.filter(target => target.kind === 'dest').length),
+    scrapingFiles: Number(item.deleted_scraping_files ?? deletedTargets.filter(target => target.kind === 'dest_scraping').length),
+    sourceFiles: Number(item.deleted_source_files ?? deletedTargets.filter(target => target.kind === 'src').length),
+    seedTasks: (item.deleted_seed_tasks || []).length,
+    failedSeedTasks: (item.failed_seed_tasks || []).length,
+    failedTargets: (item.failed_targets || []).length,
+  }
+}
+
+function queueStatusColor(item) {
+  if (item.status === 'running') return 'info'
+  return 'warning'
+}
+
+function queueStatusText(item) {
+  if (item.status === 'running') return '执行中'
+  return '排队中'
+}
+
 function toggleSelected(item) {
   if (isSelected(item)) {
     selectedMedia.value = selectedMedia.value.filter(selected => selected.id !== item.id)
@@ -304,21 +336,26 @@ function openPlanTargetDialog(item) {
   planTargetDialog.value = true
 }
 
+function openHistoryDetail(item) {
+  selectedHistoryItem.value = item
+  historyDetailDialog.value = true
+}
+
 async function createSinglePlan(item) {
   selectedMedia.value = [item]
   detailDialog.value = false
   await createPlan()
 }
 
-async function loadStatus() {
-  loading.value = true
+async function loadStatus(showLoading = true) {
+  if (showLoading) loading.value = true
   try {
     const response = await props.api.get(`${pluginBase.value}/status`)
     applyStatus(unwrapResponse(response))
   } catch (err) {
     showToast(err?.message || '加载媒体库管家状态失败', 'error')
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
 }
 
@@ -497,9 +534,10 @@ async function executePlan() {
       return
     }
     applyStatus(unwrapResponse(response))
-    showToast('清理计划已执行')
+    showToast(response?.message || '已加入清理队列')
     executeDialog.value = false
     selectedMedia.value = []
+    activeTab.value = 'history'
   } catch (err) {
     showToast(err?.message || '执行清理计划失败', 'error')
   } finally {
@@ -520,6 +558,23 @@ function showToast(message, type = 'success') {
   }
 }
 
+function startQueuePolling() {
+  if (queuePollTimer.value) return
+  queuePollTimer.value = window.setInterval(() => {
+    if (!cleanupQueueRows.value.length) {
+      stopQueuePolling()
+      return
+    }
+    loadStatus(false)
+  }, 4000)
+}
+
+function stopQueuePolling() {
+  if (!queuePollTimer.value) return
+  window.clearInterval(queuePollTimer.value)
+  queuePollTimer.value = null
+}
+
 defineExpose({
   loadStatus,
   saveConfig,
@@ -534,6 +589,18 @@ defineExpose({
 onMounted(() => {
   loadCachedStatus()
   loadStatus()
+})
+
+watch(cleanupQueueRows, (rows) => {
+  if (rows.length) {
+    startQueuePolling()
+    return
+  }
+  stopQueuePolling()
+})
+
+onUnmounted(() => {
+  stopQueuePolling()
 })
 </script>
 
@@ -863,13 +930,45 @@ onMounted(() => {
 
         <VWindowItem value="history">
           <div class="mlk-section">
+            <VSheet v-if="cleanupQueueRows.length" border rounded class="mlk-queue-card">
+              <div class="mlk-section-header">
+                <div>
+                  <div class="text-subtitle-1 font-weight-medium">清理队列</div>
+                  <div class="text-caption text-medium-emphasis">清理任务在后台执行，完成后会写入下方执行记录。</div>
+                </div>
+              </div>
+              <VDataTable
+                :headers="[
+                  { title: '加入时间', key: 'created_at', width: 168 },
+                  { title: '状态', key: 'status', width: 110 },
+                  { title: '媒体', key: 'ready_count', width: 110 },
+                  { title: '预计释放', key: 'estimated_reclaim_size', width: 120 },
+                  { title: '说明', key: 'message' },
+                ]"
+                :items="cleanupQueueRows"
+                density="compact"
+              >
+                <template #item.status="{ item }">
+                  <VChip :color="queueStatusColor(item)" variant="tonal" size="small">
+                    {{ queueStatusText(item) }}
+                  </VChip>
+                </template>
+                <template #item.ready_count="{ item }">{{ item.ready_count || 0 }}/{{ item.item_count || 0 }}</template>
+                <template #item.estimated_reclaim_size="{ item }">{{ formatBytes(item.estimated_reclaim_size) }}</template>
+              </VDataTable>
+            </VSheet>
             <VDataTable
               :headers="[
                 { title: '时间', key: 'created_at', width: 168 },
                 { title: '结果', key: 'status', width: 110 },
                 { title: '释放空间', key: 'reclaim_size', width: 120 },
+                { title: '媒体库文件', key: 'deleted_media_files', width: 120 },
+                { title: '刮削文件', key: 'deleted_scraping_files', width: 110 },
+                { title: '源文件', key: 'deleted_source_files', width: 100 },
+                { title: '保种任务', key: 'seed_tasks', width: 110 },
                 { title: '整理记录', key: 'deleted_records', width: 110 },
                 { title: '说明', key: 'message' },
+                { title: '详情', key: 'actions', width: 90, sortable: false },
               ]"
               :items="historyRows"
               density="comfortable"
@@ -880,6 +979,16 @@ onMounted(() => {
                 </VChip>
               </template>
               <template #item.reclaim_size="{ item }">{{ formatBytes(item.reclaim_size) }}</template>
+              <template #item.deleted_media_files="{ item }">{{ cleanupRecordStats(item).mediaFiles }}</template>
+              <template #item.deleted_scraping_files="{ item }">{{ cleanupRecordStats(item).scrapingFiles }}</template>
+              <template #item.deleted_source_files="{ item }">{{ cleanupRecordStats(item).sourceFiles }}</template>
+              <template #item.seed_tasks="{ item }">
+                {{ cleanupRecordStats(item).seedTasks }}
+                <span v-if="cleanupRecordStats(item).failedSeedTasks" class="text-error">/{{ cleanupRecordStats(item).failedSeedTasks }} 失败</span>
+              </template>
+              <template #item.actions="{ item }">
+                <VBtn icon="mdi-file-eye-outline" variant="text" @click="openHistoryDetail(item)" />
+              </template>
               <template #no-data>
                 <VEmptyState icon="mdi-history" title="暂无执行记录" text="每次真实清理的结果都会保存在这里。" />
               </template>
@@ -1159,6 +1268,98 @@ onMounted(() => {
       </VCard>
     </VDialog>
 
+    <VDialog v-model="historyDetailDialog" max-width="980">
+      <VCard v-if="selectedHistoryItem">
+        <VCardTitle>清理记录详情</VCardTitle>
+        <VCardText>
+          <div class="mlk-detail-summary mb-4">
+            <VChip :color="selectedHistoryItem.status === 'success' ? 'success' : 'error'" variant="tonal" size="small">
+              {{ selectedHistoryItem.status === 'success' ? '成功' : '失败' }}
+            </VChip>
+            <VChip variant="tonal" size="small">媒体库文件 {{ historyDetailStats.mediaFiles }}</VChip>
+            <VChip variant="tonal" size="small">刮削文件 {{ historyDetailStats.scrapingFiles }}</VChip>
+            <VChip variant="tonal" size="small">源文件 {{ historyDetailStats.sourceFiles }}</VChip>
+            <VChip variant="tonal" size="small">保种任务 {{ historyDetailStats.seedTasks }}</VChip>
+            <VChip v-if="historyDetailStats.failedTargets || historyDetailStats.failedSeedTasks" color="error" variant="tonal" size="small">
+              失败 {{ historyDetailStats.failedTargets + historyDetailStats.failedSeedTasks }}
+            </VChip>
+          </div>
+          <div class="text-body-2 text-medium-emphasis mb-4">{{ selectedHistoryItem.message }}</div>
+
+          <div v-if="selectedHistoryItem.items?.length" class="mb-4">
+            <div class="text-subtitle-2 mb-2">本次媒体</div>
+            <div class="mlk-chip-row">
+              <VChip v-for="item in selectedHistoryItem.items" :key="`${item.title}-${item.type}`" size="small" variant="tonal">
+                {{ item.title }} · {{ formatBytes(item.size) }}
+              </VChip>
+            </div>
+          </div>
+
+          <div class="text-subtitle-2 mb-2">删除文件</div>
+          <VDataTable
+            :headers="[
+              { title: '媒体', key: 'media_title', width: 180 },
+              { title: '类型', key: 'kind_label', width: 120 },
+              { title: '大小', key: 'size', width: 110 },
+              { title: '路径', key: 'path_preview' },
+            ]"
+            :items="selectedHistoryItem.deleted_targets || []"
+            density="compact"
+          >
+            <template #item.media_title="{ item }">{{ item.media_title || '-' }}</template>
+            <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
+            <template #item.kind_label="{ item }">
+              <VChip :color="item.kind === 'src' ? 'error' : item.kind === 'dest_scraping' ? 'info' : 'primary'" variant="tonal" size="small">
+                {{ item.kind_label || item.kind }}
+              </VChip>
+            </template>
+            <template #no-data>
+              <VEmptyState icon="mdi-file-remove-outline" title="没有删除文件明细" />
+            </template>
+          </VDataTable>
+
+          <div class="text-subtitle-2 mt-5 mb-2">保种任务</div>
+          <VDataTable
+            :headers="[
+              { title: '标题', key: 'title', width: 220 },
+              { title: '下载器', key: 'downloader', width: 140 },
+              { title: 'Hash', key: 'download_hash' },
+              { title: '结果', key: 'result', width: 110 },
+            ]"
+            :items="historySeedRows"
+            density="compact"
+          >
+            <template #item.download_hash="{ item }">{{ item.download_hash ? `${item.download_hash.slice(0, 16)}...` : '-' }}</template>
+            <template #item.result="{ item }">
+              <VChip :color="item.result === 'success' ? 'success' : 'error'" variant="tonal" size="small">
+                {{ item.result === 'success' ? '已删除' : (item.error || '失败') }}
+              </VChip>
+            </template>
+            <template #no-data>
+              <VEmptyState icon="mdi-download-off-outline" title="没有保种任务明细" />
+            </template>
+          </VDataTable>
+
+          <div v-if="selectedHistoryItem.failed_targets?.length" class="mt-5">
+            <div class="text-subtitle-2 mb-2">失败项</div>
+            <VDataTable
+              :headers="[
+                { title: '类型', key: 'kind_label', width: 120 },
+                { title: '路径', key: 'path_preview' },
+                { title: '错误', key: 'error' },
+              ]"
+              :items="selectedHistoryItem.failed_targets"
+              density="compact"
+            />
+          </div>
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" @click="historyDetailDialog = false">关闭</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
     <VDialog v-model="executeDialog" max-width="640">
       <VCard>
         <VCardTitle>确认执行清理计划</VCardTitle>
@@ -1428,6 +1629,10 @@ onMounted(() => {
   gap: 12px;
 }
 
+.mlk-queue-card {
+  padding: 16px;
+}
+
 .mlk-plan-summary {
   justify-content: space-between;
 }
@@ -1468,6 +1673,13 @@ onMounted(() => {
 
 .mlk-detail-actions {
   justify-content: flex-end;
+}
+
+.mlk-detail-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .mlk-disk-row {

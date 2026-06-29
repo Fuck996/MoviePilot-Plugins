@@ -85,6 +85,7 @@ function compactStatus(status) {
     media: (status.media || []).map(compactMediaItem),
     recommendations: (status.recommendations || []).map(compactMediaItem),
     pending_plan: compactPlan(status.pending_plan),
+    cleanup_queue: (status.cleanup_queue || []).map(compactQueueItem),
     history: (status.history || []).slice(0, 20).map(compactHistoryItem),
   }
 }
@@ -162,19 +163,71 @@ function compactDeleteTarget(target) {
     'path_preview',
     'size',
     'match_source',
+    'media_id',
+    'media_title',
+    'media_type',
+    'media_type_label',
+    'parent_media_path',
     'directory_mapping',
   ])
 }
 
 function compactHistoryItem(item) {
-  return pickFields(item, [
+  const compacted = pickFields(item, [
     'plan_id',
+    'queue_id',
     'created_at',
+    'queued_at',
+    'started_at',
     'status',
     'delete_source',
     'reclaim_size',
     'deleted_records',
+    'deleted_media_files',
+    'deleted_scraping_files',
+    'deleted_source_files',
     'message',
+  ])
+  compacted.items = (item.items || []).map(entry => pickFields(entry, ['title', 'type', 'size']))
+  compacted.deleted_targets = (item.deleted_targets || []).map(compactDeleteTarget)
+  compacted.failed_targets = (item.failed_targets || []).map(compactFailedTarget)
+  compacted.deleted_seed_tasks = (item.deleted_seed_tasks || []).map(compactSeedTask)
+  compacted.failed_seed_tasks = (item.failed_seed_tasks || []).map(compactSeedTask)
+  return compacted
+}
+
+function compactQueueItem(item) {
+  return pickFields(item, [
+    'id',
+    'plan_id',
+    'batch_id',
+    'created_at',
+    'started_at',
+    'status',
+    'message',
+    'item_count',
+    'ready_count',
+    'estimated_reclaim_size',
+    'delete_source',
+  ])
+}
+
+function compactFailedTarget(target) {
+  return {
+    ...compactDeleteTarget(target),
+    error: target?.error,
+  }
+}
+
+function compactSeedTask(task) {
+  return pickFields(task, [
+    'record_id',
+    'title',
+    'downloader',
+    'downloader_type',
+    'download_hash',
+    'source',
+    'error',
   ])
 }
 

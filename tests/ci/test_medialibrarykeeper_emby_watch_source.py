@@ -49,6 +49,25 @@ def test_medialibrarykeeper_does_not_register_api_on_plugin_reload() -> None:
     assert "PluginReload" not in source
 
 
+def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    frontend = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    provider = Path("plugins.v2/medialibrarykeeper/src/provider.js").read_text(encoding="utf-8")
+
+    assert "DATA_KEY_CLEANUP_QUEUE" in source
+    assert "_enqueue_cleanup_plan" in source
+    assert "threading.Thread" in source
+    assert "deleted_media_files" in source
+    assert "deleted_scraping_files" in source
+    assert "_with_scraping_targets" in source
+    assert "DownloadHistoryOper" in source
+    assert "get_file_by_fullpath" in source
+    assert "historyDetailDialog" in frontend
+    assert "cleanupQueueRows" in frontend
+    assert "compactQueueItem" in provider
+    assert "deleted_targets" in provider
+
+
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
 

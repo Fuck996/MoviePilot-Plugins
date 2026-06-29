@@ -1,5 +1,6 @@
 import os
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,6 +24,11 @@ from app.schemas import NotificationType
 from app.schemas.types import EventType
 
 try:
+    from app.db.downloadhistory_oper import DownloadHistoryOper
+except Exception:
+    DownloadHistoryOper = None
+
+try:
     from app.db.models.transferhistory import TransferHistory
 except Exception:
     TransferHistory = None
@@ -37,7 +43,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.31"
+    plugin_version = "0.3.32"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -46,20 +52,26 @@ class MediaLibraryKeeper(_PluginBase):
 
     DATA_KEY_HISTORY = "history"
     DATA_KEY_PENDING_PLAN = "pending_plan"
+    DATA_KEY_CLEANUP_QUEUE = "cleanup_queue"
     DATA_KEY_SNAPSHOT = "snapshot"
     DATA_KEY_LAST_DISK_WARNING = "last_disk_warning"
     SUPPORTED_DOWNLOADER_TYPES = {"qbittorrent", "transmission"}
     LINK_TRANSFER_TYPES = {"link", "softlink"}
+    MEDIA_FILE_EXTENSIONS = {".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".rmvb", ".ts", ".wmv"}
+    SCRAPING_FILE_EXTENSIONS = {".ass", ".jpg", ".jpeg", ".nfo", ".png", ".srt", ".ssa", ".sup", ".webp"}
 
     def __init__(self):
         super().__init__()
         self._config: Dict[str, Any] = self._default_config()
         self._enabled = False
+        self._queue_lock = threading.Lock()
+        self._queue_worker: Optional[threading.Thread] = None
 
     def init_plugin(self, config: dict = None):
         config = self._normalize_config(config or {})
         self._config = config
         self._enabled = bool(config.get("enabled"))
+        self._resume_cleanup_queue()
 
     def get_state(self) -> bool:
         return bool(self._enabled)
@@ -219,6 +231,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "media": snapshot.get("media", []),
                 "recommendations": self._build_recommendations(snapshot),
                 "pending_plan": self.get_data(self.DATA_KEY_PENDING_PLAN) or None,
+                "cleanup_queue": self._queue_status(),
                 "history": self._load_history(),
                 "capabilities": self._capabilities(),
                 "media_server_options": self._media_server_options(),
@@ -391,18 +404,141 @@ class MediaLibraryKeeper(_PluginBase):
         if self._plan_ready_count(pending_plan) <= 0:
             return schemas.Response(success=False, message=pending_plan.get("message") or "清理计划没有可执行条目。")
 
-        result = self._execute_plan(pending_plan)
-        history = self._load_history()
-        history.insert(0, result)
-        self.save_data(self.DATA_KEY_HISTORY, history[:50])
-        if result["status"] == "success":
-            self.save_data(self.DATA_KEY_PENDING_PLAN, None)
-        if self._config.get("notify_enabled"):
-            self._notify_cleanup_result(result)
-        return schemas.Response(success=result["status"] == "success", message=result["message"], data=self.get_status().data)
+        self._enqueue_cleanup_plan(pending_plan)
+        self.save_data(self.DATA_KEY_PENDING_PLAN, None)
+        self._ensure_cleanup_worker()
+        return schemas.Response(success=True, message="已加入清理队列，后台执行完成后会写入执行记录。", data=self.get_status().data)
 
     def get_history_api(self) -> schemas.Response:
         return schemas.Response(success=True, data={"history": self._load_history()})
+
+    def _enqueue_cleanup_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        with self._queue_lock:
+            queue = self._load_cleanup_queue()
+            for item in queue:
+                if item.get("plan_id") == plan.get("id") and item.get("status") in {"queued", "running"}:
+                    return item
+            now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            queue_item = {
+                "id": f"{plan.get('id')}-{datetime.now().strftime('%H%M%S%f')}",
+                "plan_id": plan.get("id"),
+                "batch_id": plan.get("batch_id") or plan.get("id"),
+                "created_at": now_text,
+                "started_at": "",
+                "status": "queued",
+                "message": "等待执行",
+                "item_count": len(plan.get("items") or []),
+                "ready_count": self._plan_ready_count(plan),
+                "estimated_reclaim_size": plan.get("estimated_reclaim_size") or 0,
+                "delete_source": bool(plan.get("delete_source")),
+                "plan": plan,
+            }
+            queue.append(queue_item)
+            self.save_data(self.DATA_KEY_CLEANUP_QUEUE, queue[:20])
+            return queue_item
+
+    def _resume_cleanup_queue(self) -> None:
+        with self._queue_lock:
+            queue = self._load_cleanup_queue()
+            changed = False
+            for item in queue:
+                if item.get("status") == "running":
+                    item["status"] = "queued"
+                    item["message"] = "插件重载后等待重新执行"
+                    item["started_at"] = ""
+                    changed = True
+            if changed:
+                self.save_data(self.DATA_KEY_CLEANUP_QUEUE, queue)
+        self._ensure_cleanup_worker()
+
+    def _ensure_cleanup_worker(self) -> None:
+        with self._queue_lock:
+            if self._queue_worker and self._queue_worker.is_alive():
+                return
+            if not any(item.get("status") in {"queued", "running"} for item in self._load_cleanup_queue()):
+                return
+            self._queue_worker = threading.Thread(target=self._run_cleanup_queue, name="MediaLibraryKeeperCleanupQueue", daemon=True)
+            self._queue_worker.start()
+
+    def _run_cleanup_queue(self) -> None:
+        while True:
+            queue_item = self._take_next_cleanup_queue_item()
+            if not queue_item:
+                return
+            result = self._run_cleanup_queue_item(queue_item)
+            self._complete_cleanup_queue_item(queue_item, result)
+
+    def _take_next_cleanup_queue_item(self) -> Optional[Dict[str, Any]]:
+        with self._queue_lock:
+            queue = self._load_cleanup_queue()
+            for item in queue:
+                if item.get("status") not in {"queued", "running"}:
+                    continue
+                if item.get("status") == "queued":
+                    item["status"] = "running"
+                    item["started_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    item["message"] = "正在执行"
+                    self.save_data(self.DATA_KEY_CLEANUP_QUEUE, queue)
+                return dict(item)
+        return None
+
+    def _run_cleanup_queue_item(self, queue_item: Dict[str, Any]) -> Dict[str, Any]:
+        plan = queue_item.get("plan") or {}
+        try:
+            result = self._execute_plan(plan)
+        except Exception as err:
+            logger.error(f"媒体库管家清理队列执行失败：{err}")
+            result = {
+                "plan_id": plan.get("id") or queue_item.get("plan_id"),
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "status": "failed",
+                "delete_source": bool(plan.get("delete_source")),
+                "reclaim_size": 0,
+                "deleted_records": 0,
+                "deleted_media_files": 0,
+                "deleted_scraping_files": 0,
+                "deleted_source_files": 0,
+                "deleted_seed_tasks": [],
+                "failed_seed_tasks": [],
+                "deleted_targets": [],
+                "failed_targets": [{"kind": "queue", "path": "", "path_preview": queue_item.get("batch_id"), "error": str(err)}],
+                "items": [{"title": item.get("title"), "type": item.get("type"), "size": item.get("size")} for item in plan.get("items", [])],
+                "message": f"清理队列执行失败：{err}",
+            }
+        result["queue_id"] = queue_item.get("id")
+        result["queued_at"] = queue_item.get("created_at")
+        result["started_at"] = queue_item.get("started_at")
+        return result
+
+    def _complete_cleanup_queue_item(self, queue_item: Dict[str, Any], result: Dict[str, Any]) -> None:
+        with self._queue_lock:
+            queue = [item for item in self._load_cleanup_queue() if item.get("id") != queue_item.get("id")]
+            self.save_data(self.DATA_KEY_CLEANUP_QUEUE, queue)
+            history = self._load_history()
+            history.insert(0, result)
+            self.save_data(self.DATA_KEY_HISTORY, history[:50])
+        if self._config.get("notify_enabled"):
+            self._notify_cleanup_result(result)
+
+    def _queue_status(self) -> List[Dict[str, Any]]:
+        queue = self._load_cleanup_queue()
+        return [
+            {
+                "id": item.get("id"),
+                "plan_id": item.get("plan_id"),
+                "batch_id": item.get("batch_id"),
+                "created_at": item.get("created_at"),
+                "started_at": item.get("started_at"),
+                "status": item.get("status"),
+                "message": item.get("message"),
+                "item_count": item.get("item_count") or 0,
+                "ready_count": item.get("ready_count") or 0,
+                "estimated_reclaim_size": item.get("estimated_reclaim_size") or 0,
+                "delete_source": bool(item.get("delete_source")),
+            }
+            for item in queue
+            if item.get("status") in {"queued", "running"}
+        ]
 
     def get_image_api(
         self,
@@ -1449,6 +1585,7 @@ class MediaLibraryKeeper(_PluginBase):
 
         if not records and not delete_targets:
             delete_targets.extend(self._targets_from_directory_mapping(media, delete_source))
+        delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets), media)
 
         status = "ready" if delete_targets else "no_match"
         if records and delete_targets:
@@ -1473,11 +1610,19 @@ class MediaLibraryKeeper(_PluginBase):
             "last_episode_added_at": media.get("last_episode_added_at"),
             "last_watched_at": media.get("last_watched_at"),
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
-            "download_tasks": self._download_tasks_from_records(records),
+            "download_tasks": self._download_tasks_for_media(media, records),
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
             "message": message,
         }
+
+    def _annotate_targets_for_media(self, targets: List[Dict[str, Any]], media: Dict[str, Any]) -> List[Dict[str, Any]]:
+        for target in targets:
+            target["media_id"] = media.get("id")
+            target["media_title"] = media.get("title")
+            target["media_type"] = media.get("type")
+            target["media_type_label"] = media.get("type_label")
+        return targets
 
     def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool) -> List[Dict[str, Any]]:
         mappings = self._directory_mappings()
@@ -1577,6 +1722,76 @@ class MediaLibraryKeeper(_PluginBase):
             return fileitem.dict()
         return dict(fileitem)
 
+    def _with_scraping_targets(self, targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not targets:
+            return targets
+        storage = StorageChain()
+        result = list(targets)
+        seen_paths = {self._normalized_path_text(target.get("path")).lower() for target in result if target.get("path")}
+        for target in targets:
+            if target.get("kind") != "dest" or not self._is_media_file_path(target.get("path")):
+                continue
+            for scraping_target in self._scraping_targets_for_media_target(storage, target):
+                key = self._normalized_path_text(scraping_target.get("path")).lower()
+                if not key or key in seen_paths:
+                    continue
+                seen_paths.add(key)
+                result.append(scraping_target)
+        return result
+
+    def _scraping_targets_for_media_target(self, storage: StorageChain, target: Dict[str, Any]) -> List[Dict[str, Any]]:
+        path = self._normalized_path_text(target.get("path"))
+        fileitem = target.get("fileitem") or {}
+        storage_name = self._clean_text(fileitem.get("storage")) or "local"
+        if not path:
+            return []
+        try:
+            parent_item = storage.get_file_item(storage=storage_name, path=Path(path).parent)
+            if not parent_item:
+                return []
+            siblings = storage.list_files(parent_item, recursion=False) or []
+        except Exception as err:
+            logger.warning(f"媒体库管家读取同名刮削文件失败 {path}: {err}")
+            return []
+        stem = Path(path).stem.lower()
+        result: List[Dict[str, Any]] = []
+        for sibling in siblings:
+            sibling_item = self._fileitem_to_dict(sibling)
+            sibling_path = self._normalized_path_text(sibling_item.get("path"))
+            sibling_name = Path(sibling_path).name if sibling_path else self._clean_text(sibling_item.get("name"))
+            if not sibling_path or not sibling_name:
+                continue
+            sibling_path_obj = Path(sibling_path)
+            if sibling_path_obj.stem.lower() != stem:
+                continue
+            if sibling_path_obj.suffix.lower() not in self.SCRAPING_FILE_EXTENSIONS:
+                continue
+            size = self._to_int(sibling_item.get("size") or sibling_item.get("size_bytes"), 0)
+            result.append({
+                "record_id": target.get("record_id"),
+                "kind": "dest_scraping",
+                "kind_label": "刮削伴随文件",
+                "path": sibling_path,
+                "path_preview": self._path_preview(sibling_path),
+                "size": size,
+                "fileitem": sibling_item,
+                "match_source": "scraping_sidecar",
+                "parent_media_path": path,
+            })
+        return result
+
+    @classmethod
+    def _is_media_file_path(cls, path: Any) -> bool:
+        return Path(str(path or "")).suffix.lower() in cls.MEDIA_FILE_EXTENSIONS
+
+    @staticmethod
+    def _fileitem_to_dict(fileitem: Any) -> Dict[str, Any]:
+        if hasattr(fileitem, "model_dump"):
+            return fileitem.model_dump()
+        if hasattr(fileitem, "dict"):
+            return fileitem.dict()
+        return dict(fileitem)
+
     def _media_file_paths(self, media: Dict[str, Any]) -> List[str]:
         if media.get("type") == "series":
             paths = media.get("episode_paths") or []
@@ -1639,7 +1854,7 @@ class MediaLibraryKeeper(_PluginBase):
         if title:
             records.extend(self._query_transfer_by_title(title))
 
-        path = self._clean_text(media.get("path"))
+        paths = self._media_file_paths(media)
         matched = []
         for record in self._dedupe_records(records):
             if not bool(getattr(record, "status", True)):
@@ -1647,7 +1862,7 @@ class MediaLibraryKeeper(_PluginBase):
             if tmdbid and str(getattr(record, "tmdbid", "") or "") == tmdbid:
                 matched.append(record)
                 continue
-            if path and self._path_matches(path, getattr(record, "dest", "")):
+            if any(self._path_matches(path, getattr(record, "dest", "")) for path in paths):
                 matched.append(record)
                 continue
             if title and title.lower() in self._clean_text(getattr(record, "title", "")).lower():
@@ -1726,6 +1941,12 @@ class MediaLibraryKeeper(_PluginBase):
             "date": self._clean_text(getattr(record, "date", "")),
         }
 
+    def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
+        return self._dedupe_download_tasks([
+            *self._download_tasks_from_records(records),
+            *self._download_tasks_from_history(media, records),
+        ])
+
     def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
         allowed_downloaders = self._selected_downloader_names()
         tasks = []
@@ -1746,8 +1967,112 @@ class MediaLibraryKeeper(_PluginBase):
                 "downloader": downloader,
                 "downloader_type": dtype,
                 "download_hash": download_hash,
+                "matched_paths": [self._clean_text(getattr(record, "dest", ""))],
+                "source": "transfer_history",
             })
         return self._dedupe_download_tasks(tasks)
+
+    def _download_tasks_from_history(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
+        if not DownloadHistoryOper:
+            return []
+        oper = DownloadHistoryOper()
+        history_items: List[Any] = []
+        for path in self._media_file_paths(media):
+            history_items.extend(self._query_download_history_by_path(oper, path))
+        tmdbid = self._clean_text((media.get("provider_ids") or {}).get("Tmdb"))
+        if tmdbid and hasattr(oper, "get_by_mediaid"):
+            try:
+                media_history = oper.get_by_mediaid(tmdbid=int(tmdbid), doubanid=self._clean_text((media.get("provider_ids") or {}).get("Douban")))
+            except Exception:
+                media_history = []
+            if isinstance(media_history, list):
+                history_items.extend(media_history)
+            elif media_history:
+                history_items.append(media_history)
+        title = self._clean_text(media.get("title"))
+        if title and hasattr(oper, "get_last_by"):
+            mtype = "MOV" if media.get("type") == "movie" else "TV"
+            try:
+                item = oper.get_last_by(mtype=mtype, title=title, year=self._clean_text(media.get("year")), tmdbid=int(tmdbid) if tmdbid else None)
+            except Exception:
+                item = None
+            if isinstance(item, list):
+                history_items.extend(item)
+            elif item:
+                history_items.append(item)
+
+        record_ids = {getattr(record, "id", None) for record in records if getattr(record, "id", None) is not None}
+        allowed_downloaders = self._selected_downloader_names()
+        tasks: List[Dict[str, Any]] = []
+        for item in self._dedupe_records(history_items):
+            downloader = self._clean_text(getattr(item, "downloader", ""))
+            download_hash = self._clean_text(getattr(item, "download_hash", "")) or self._clean_text(getattr(item, "hash", ""))
+            if not downloader or not download_hash:
+                continue
+            if allowed_downloaders and downloader not in allowed_downloaders:
+                continue
+            service_info = DownloaderHelper().get_service(name=downloader)
+            dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
+            if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+                continue
+            record_id = getattr(item, "transfer_id", None) or getattr(item, "transferhis_id", None)
+            if record_id not in record_ids:
+                record_id = None
+            fullpath = self._clean_text(getattr(item, "fullpath", ""))
+            matched_paths = [fullpath] if fullpath else [
+                self._clean_text(getattr(item, attr, ""))
+                for attr in ["path", "save_path", "savepath"]
+                if self._clean_text(getattr(item, attr, ""))
+            ]
+            tasks.append({
+                "record_id": record_id,
+                "title": self._clean_text(getattr(item, "title", "")) or self._clean_text(getattr(item, "torrentname", "")) or title,
+                "downloader": downloader,
+                "downloader_type": dtype,
+                "download_hash": download_hash,
+                "matched_paths": matched_paths,
+                "source": "download_history",
+            })
+        return self._dedupe_download_tasks(tasks)
+
+    def _query_download_history_by_path(self, oper: Any, path: str) -> List[Any]:
+        result: List[Any] = []
+        clean_path = self._normalized_path_text(path)
+        if not clean_path:
+            return result
+        if hasattr(oper, "get_file_by_fullpath"):
+            try:
+                item = oper.get_file_by_fullpath(fullpath=clean_path)
+            except TypeError:
+                try:
+                    item = oper.get_file_by_fullpath(clean_path)
+                except Exception:
+                    item = None
+            except Exception:
+                item = None
+            if item:
+                result.append(item)
+        if hasattr(oper, "get_files_by_savepath"):
+            save_path = str(Path(clean_path).parent)
+            try:
+                items = oper.get_files_by_savepath(fullpath=save_path)
+            except TypeError:
+                try:
+                    items = oper.get_files_by_savepath(save_path)
+                except Exception:
+                    items = []
+            except Exception:
+                items = []
+            if items:
+                result.extend(items)
+        if hasattr(oper, "list_by_path"):
+            try:
+                items = oper.list_by_path(path=clean_path)
+            except Exception:
+                items = []
+            if items:
+                result.extend(items)
+        return result
 
     def _selected_downloader_names(self) -> set:
         configured = set(self._config.get("downloaders") or [])
@@ -1798,7 +2123,7 @@ class MediaLibraryKeeper(_PluginBase):
 
         oper = TransferHistoryOper()
         deleted_records = 0
-        deleted_seed_tasks, failed_seed_tasks = self._delete_seed_tasks(plan, record_status)
+        deleted_seed_tasks, failed_seed_tasks = self._delete_seed_tasks(plan, record_status, deleted_targets)
         for record_id, ok in record_status.items():
             if not ok or record_id is None:
                 continue
@@ -1820,6 +2145,7 @@ class MediaLibraryKeeper(_PluginBase):
         reclaim_size = self._sum_target_size(deleted_targets)
         success = not failed_targets
         seed_task_text = f"，保种任务 {len(deleted_seed_tasks)} 个" if self._config.get("delete_seed_tasks") else ""
+        deleted_counts = self._deleted_target_counts(deleted_targets)
         return {
             "plan_id": plan.get("id"),
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1827,23 +2153,35 @@ class MediaLibraryKeeper(_PluginBase):
             "delete_source": bool(plan.get("delete_source")),
             "reclaim_size": reclaim_size,
             "deleted_records": deleted_records,
+            "deleted_media_files": deleted_counts["media_files"],
+            "deleted_scraping_files": deleted_counts["scraping_files"],
+            "deleted_source_files": deleted_counts["source_files"],
             "deleted_seed_tasks": deleted_seed_tasks,
             "failed_seed_tasks": failed_seed_tasks,
             "deleted_targets": deleted_targets,
             "failed_targets": failed_targets,
             "items": [{"title": item.get("title"), "type": item.get("type"), "size": item.get("size")} for item in executable_items],
-            "message": f"清理完成，删除 {len(deleted_targets)} 个文件，整理记录 {deleted_records} 条{seed_task_text}。" if success else f"清理未完全成功，失败 {len(failed_targets)} 项，请查看执行记录。",
+            "message": f"清理完成，媒体库文件 {deleted_counts['media_files']} 个，刮削伴随文件 {deleted_counts['scraping_files']} 个，源文件 {deleted_counts['source_files']} 个，整理记录 {deleted_records} 条{seed_task_text}。" if success else f"清理未完全成功，失败 {len(failed_targets)} 项，请查看执行记录。",
         }
 
-    def _delete_seed_tasks(self, plan: Dict[str, Any], record_status: Dict[Any, bool]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    @staticmethod
+    def _deleted_target_counts(deleted_targets: List[Dict[str, Any]]) -> Dict[str, int]:
+        return {
+            "media_files": len([target for target in deleted_targets if target.get("kind") == "dest"]),
+            "scraping_files": len([target for target in deleted_targets if target.get("kind") == "dest_scraping"]),
+            "source_files": len([target for target in deleted_targets if target.get("kind") == "src"]),
+        }
+
+    def _delete_seed_tasks(self, plan: Dict[str, Any], record_status: Dict[Any, bool], deleted_targets: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         if not self._config.get("delete_seed_tasks"):
             return [], []
         successful_record_ids = {record_id for record_id, ok in record_status.items() if ok and record_id is not None}
+        deleted_dest_paths = [target.get("path") for target in deleted_targets if target.get("kind") in {"dest", "dest_scraping"}]
         tasks = self._dedupe_download_tasks([
             task
             for item in plan.get("items", [])
             for task in item.get("download_tasks", []) or []
-            if task.get("record_id") in successful_record_ids
+            if task.get("record_id") in successful_record_ids or self._download_task_matches_deleted_paths(task, deleted_dest_paths)
         ])
         if not tasks:
             return [], []
@@ -1872,6 +2210,14 @@ class MediaLibraryKeeper(_PluginBase):
             except Exception as err:
                 failed.append({**task, "error": str(err)})
         return deleted, failed
+
+    def _download_task_matches_deleted_paths(self, task: Dict[str, Any], deleted_paths: List[Any]) -> bool:
+        matched_paths = task.get("matched_paths") or []
+        return any(
+            self._path_matches(self._clean_text(deleted_path), self._clean_text(matched_path))
+            for deleted_path in deleted_paths
+            for matched_path in matched_paths
+        )
 
     def _notify_cleanup_result(self, result: Dict[str, Any]) -> None:
         title = "【媒体库管家】清理完成" if result.get("status") == "success" else "【媒体库管家】清理异常"
@@ -1924,6 +2270,10 @@ class MediaLibraryKeeper(_PluginBase):
     def _load_history(self) -> List[Dict[str, Any]]:
         history = self.get_data(self.DATA_KEY_HISTORY) or []
         return history if isinstance(history, list) else []
+
+    def _load_cleanup_queue(self) -> List[Dict[str, Any]]:
+        queue = self.get_data(self.DATA_KEY_CLEANUP_QUEUE) or []
+        return queue if isinstance(queue, list) else []
 
     def _load_snapshot(self) -> Dict[str, Any]:
         snapshot = self.get_data(self.DATA_KEY_SNAPSHOT) or {}
