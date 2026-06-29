@@ -35,8 +35,8 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
     plugin_version = "0.2.0"
-    plugin_author = "liuyuexi1987"
-    author_url = "https://github.com/liuyuexi1987"
+    plugin_author = "fuck996"
+    author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
     plugin_order = 48
     auth_level = 1
