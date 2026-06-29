@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.28"
+    plugin_version = "0.3.29"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -278,14 +278,15 @@ class MediaLibraryKeeper(_PluginBase):
         for server_name, service_info in services.items():
             service = service_info.instance
             try:
-                user_id = self._resolve_emby_user_id(service, service_info)
-                if not user_id:
+                scan_users = self._resolve_emby_scan_users(service, service_info)
+                if not scan_users:
                     errors.append(f"{server_name} 未解析到 Emby 用户，请检查 MoviePilot 媒体服务器用户名配置。")
                     continue
+                user_id = scan_users[0]["id"]
                 server_libraries = self._fetch_emby_libraries(service, service_info, server_name, user_id)
                 libraries.extend(server_libraries)
                 for library in server_libraries:
-                    library_media, library_audit = self._fetch_emby_items(service, service_info, server_name, user_id, library)
+                    library_media, library_audit = self._fetch_emby_items(service, service_info, server_name, scan_users, library)
                     media.extend(library_media)
                     if library_audit:
                         watch_audit.append(library_audit)
@@ -666,11 +667,7 @@ class MediaLibraryKeeper(_PluginBase):
         data = response.json() if hasattr(response, "json") else response
         return data if isinstance(data, list) else []
 
-    def _resolve_emby_user_id(self, service: Any, service_info: Any) -> str:
-        user_id = self._clean_text(getattr(service, "user", ""))
-        if user_id:
-            return user_id
-
+    def _resolve_emby_scan_users(self, service: Any, service_info: Any) -> List[Dict[str, str]]:
         users = self._fetch_emby_users(service)
         username = self._clean_text(getattr(service, "_username", ""))
         config = getattr(service_info, "config", None)
@@ -679,11 +676,17 @@ class MediaLibraryKeeper(_PluginBase):
         if username:
             for user in users:
                 if self._clean_text(user.get("Name")) == username:
-                    return self._clean_text(user.get("Id"))
+                    return [{"id": self._clean_text(user.get("Id")), "name": self._clean_text(user.get("Name"))}]
+        scan_users = []
         for user in users:
-            if (user.get("Policy") or {}).get("IsAdministrator"):
-                return self._clean_text(user.get("Id"))
-        return self._clean_text((users[0] or {}).get("Id")) if users else ""
+            user_id = self._clean_text(user.get("Id"))
+            if not user_id or (user.get("Policy") or {}).get("IsDisabled"):
+                continue
+            scan_users.append({"id": user_id, "name": self._clean_text(user.get("Name"))})
+        if scan_users:
+            return scan_users
+        user_id = self._clean_text(getattr(service, "user", ""))
+        return [{"id": user_id, "name": ""}] if user_id else []
 
     def _fetch_emby_libraries(self, service: Any, service_info: Any, server_name: str, user_id: str) -> List[Dict[str, Any]]:
         response = service.get_data(f"[HOST]emby/Users/{user_id}/Views?api_key=[APIKEY]")
@@ -725,22 +728,35 @@ class MediaLibraryKeeper(_PluginBase):
         service: Any,
         service_info: Any,
         server_name: str,
-        user_id: str,
+        scan_users: List[Dict[str, str]],
         library: Dict[str, Any],
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         library_item_id = self._clean_text(library.get("item_id"))
         if not library_item_id:
             return [], {}
+        user_ids = [user["id"] for user in scan_users if user.get("id")]
+        user_id = user_ids[0] if user_ids else ""
+        if not user_id:
+            return [], {}
         items: List[Dict[str, Any]] = []
         start = 0
         limit = 200
         include_types = self._library_include_types(library.get("type"))
-        played_item_ids = self._fetch_emby_item_ids(
-            service, user_id, library_item_id, include_types, "IsPlayed=true"
-        )
-        played_episode_ids = self._fetch_emby_item_ids(
-            service, user_id, library_item_id, "Episode", "IsPlayed=true"
-        )
+        played_item_ids = set()
+        played_episode_ids = set()
+        user_data_by_item: Dict[str, Dict[str, Any]] = {}
+        episode_user_data_by_item: Dict[str, Dict[str, Any]] = {}
+        for scan_user_id in user_ids:
+            played_item_ids.update(self._fetch_emby_item_ids(service, scan_user_id, library_item_id, include_types, "IsPlayed=true"))
+            played_episode_ids.update(self._fetch_emby_item_ids(service, scan_user_id, library_item_id, "Episode", "IsPlayed=true"))
+            self._merge_emby_user_data_map(
+                user_data_by_item,
+                self._fetch_emby_user_data_by_item(service, scan_user_id, library_item_id, include_types),
+            )
+            self._merge_emby_user_data_map(
+                episode_user_data_by_item,
+                self._fetch_emby_user_data_by_item(service, scan_user_id, library_item_id, "Episode"),
+            )
         played_media_ids = set()
         played_episode_count = 0
         detail_user_data_count = 0
@@ -764,10 +780,14 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
+                item_id = self._clean_text(item.get("Id"))
+                merged_user_data = user_data_by_item.get(item_id)
+                if merged_user_data:
+                    item = {**item, "UserData": merged_user_data}
                 if self._needs_emby_user_data_detail(item):
-                    detail = self._fetch_emby_item_detail(service, user_id, item.get("Id"))
-                    if detail:
-                        item = {**item, **detail}
+                    detail_user_data = self._fetch_merged_emby_item_detail_user_data(service, user_ids, item_id)
+                    if detail_user_data:
+                        item = {**item, "UserData": detail_user_data}
                         detail_user_data_count += 1
                 normalized = self._normalize_emby_item(
                     item,
@@ -780,9 +800,10 @@ class MediaLibraryKeeper(_PluginBase):
                 if normalized.get("type") == "series":
                     stats = self._fetch_series_episode_stats(
                         service,
-                        user_id,
+                        user_ids,
                         normalized.get("item_id"),
                         played_episode_ids,
+                        episode_user_data_by_item,
                     )
                     if stats:
                         normalized["total_episodes"] = stats["total_episodes"] or normalized.get("total_episodes", 0)
@@ -818,6 +839,7 @@ class MediaLibraryKeeper(_PluginBase):
             "library": library.get("title") or "",
             "type": library.get("type") or "",
             "include_types": include_types,
+            "users": [user.get("name") or user.get("id") for user in scan_users],
             "emby_played_ids": sorted(played_media_ids),
             "played_source": "UserData.Played",
             "played_source_counts": {
@@ -835,6 +857,63 @@ class MediaLibraryKeeper(_PluginBase):
             },
         }
         return items, audit
+
+    def _fetch_emby_user_data_by_item(
+        self,
+        service: Any,
+        user_id: str,
+        parent_id: str,
+        include_types: str,
+    ) -> Dict[str, Dict[str, Any]]:
+        result: Dict[str, Dict[str, Any]] = {}
+        if not user_id or not parent_id or not include_types:
+            return result
+        start = 0
+        limit = 500
+        fields = quote("UserData,UserDataPlayCount,UserDataLastPlayedDate")
+        while True:
+            url = (
+                f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(parent_id)}&Recursive=true"
+                f"&IncludeItemTypes={include_types}&Fields={fields}&EnableUserData=true"
+                f"&GroupItems=false&EnableTotalRecordCount=false"
+                f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
+            )
+            response = service.get_data(url)
+            data = response.json() if hasattr(response, "json") else response
+            raw_items = data.get("Items") if isinstance(data, dict) else []
+            if not raw_items:
+                break
+            for item in raw_items:
+                item_id = self._clean_text(item.get("Id"))
+                user_data = item.get("UserData")
+                if item_id and isinstance(user_data, dict):
+                    result[item_id] = user_data
+            if len(raw_items) < limit:
+                break
+            start += limit
+        return result
+
+    def _merge_emby_user_data_map(self, target: Dict[str, Dict[str, Any]], source: Dict[str, Dict[str, Any]]) -> None:
+        for item_id, user_data in source.items():
+            target[item_id] = self._merge_emby_user_data(target.get(item_id), user_data)
+
+    def _merge_emby_user_data(self, current: Optional[Dict[str, Any]], candidate: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        current = current if isinstance(current, dict) else {}
+        candidate = candidate if isinstance(candidate, dict) else {}
+        if not current:
+            return dict(candidate)
+        if self._is_played_user_data(candidate) and not self._is_played_user_data(current):
+            return dict(candidate)
+        current_date = self._parse_date(current.get("LastPlayedDate"))
+        candidate_date = self._parse_date(candidate.get("LastPlayedDate"))
+        if candidate_date and (not current_date or candidate_date > current_date):
+            merged = {**current, **candidate}
+            merged["Played"] = self._to_bool(current.get("Played")) or self._to_bool(candidate.get("Played"))
+            return merged
+        if self._to_bool(candidate.get("Played")) and not self._to_bool(current.get("Played")):
+            merged = {**current, "Played": True}
+            return merged
+        return current
 
     def _fetch_emby_item_ids(
         self,
@@ -887,6 +966,15 @@ class MediaLibraryKeeper(_PluginBase):
         data = response.json() if hasattr(response, "json") else response
         return data if isinstance(data, dict) else {}
 
+    def _fetch_merged_emby_item_detail_user_data(self, service: Any, user_ids: List[str], item_id: Any) -> Dict[str, Any]:
+        merged: Dict[str, Any] = {}
+        for user_id in user_ids:
+            detail = self._fetch_emby_item_detail(service, user_id, item_id)
+            user_data = detail.get("UserData") if isinstance(detail, dict) else None
+            if isinstance(user_data, dict):
+                merged = self._merge_emby_user_data(merged, user_data)
+        return merged
+
     def _needs_emby_user_data_detail(self, item: Dict[str, Any]) -> bool:
         user_data = item.get("UserData") if isinstance(item, dict) else None
         if not isinstance(user_data, dict) or "Played" not in user_data:
@@ -905,14 +993,19 @@ class MediaLibraryKeeper(_PluginBase):
     def _fetch_series_episode_stats(
         self,
         service: Any,
-        user_id: str,
+        user_ids: List[str],
         series_id: Any,
         played_episode_ids: Optional[set] = None,
+        episode_user_data_by_item: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         item_id = self._clean_text(series_id)
         if not item_id:
             return {}
+        user_id = user_ids[0] if user_ids else ""
+        if not user_id:
+            return {}
         played_episode_ids = played_episode_ids or set()
+        episode_user_data_by_item = episode_user_data_by_item or {}
         total = 0
         watched = 0
         size = 0
@@ -939,10 +1032,14 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             total += len(raw_items)
             for episode in raw_items:
+                episode_id = self._clean_text(episode.get("Id"))
+                merged_user_data = episode_user_data_by_item.get(episode_id)
+                if merged_user_data:
+                    episode = {**episode, "UserData": merged_user_data}
                 if self._needs_emby_user_data_detail(episode):
-                    detail = self._fetch_emby_item_detail(service, user_id, episode.get("Id"))
-                    if detail:
-                        episode = {**episode, **detail}
+                    detail_user_data = self._fetch_merged_emby_item_detail_user_data(service, user_ids, episode_id)
+                    if detail_user_data:
+                        episode = {**episode, "UserData": detail_user_data}
                         detail_user_data_count += 1
                 user_data = episode.get("UserData") or {}
                 if self._is_played_user_data(user_data):

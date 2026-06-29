@@ -13,7 +13,11 @@ def test_medialibrarykeeper_uses_official_emby_watch_state_queries() -> None:
     assert "UserData.Played" in source
     assert "_fetch_emby_item_detail" in source
     assert "_needs_emby_user_data_detail" in source
+    assert "_resolve_emby_scan_users" in source
+    assert "_fetch_emby_user_data_by_item" in source
+    assert "_merge_emby_user_data" in source
     assert "/Items/{quote(clean_id)}" in source
+    assert "_resolve_emby_user_id" not in source
     assert "started_episodes" not in source
     assert "watching" not in source
     assert "LastPlayedDate" in source
