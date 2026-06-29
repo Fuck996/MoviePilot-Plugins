@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.27"
+    plugin_version = "0.3.28"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -743,6 +743,7 @@ class MediaLibraryKeeper(_PluginBase):
         )
         played_media_ids = set()
         played_episode_count = 0
+        detail_user_data_count = 0
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
@@ -763,6 +764,11 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
+                if self._needs_emby_user_data_detail(item):
+                    detail = self._fetch_emby_item_detail(service, user_id, item.get("Id"))
+                    if detail:
+                        item = {**item, **detail}
+                        detail_user_data_count += 1
                 normalized = self._normalize_emby_item(
                     item,
                     service_info,
@@ -786,6 +792,7 @@ class MediaLibraryKeeper(_PluginBase):
                         normalized["last_episode_added_at"] = stats.get("last_episode_added_at") or normalized.get("last_episode_added_at", "")
                         normalized["last_watched_at"] = stats.get("last_watched_at") or normalized.get("last_watched_at", "")
                         played_episode_count += stats["watched_episodes"]
+                        detail_user_data_count += stats.get("detail_user_data_count", 0)
                         normalized["watched"] = (
                             normalized["total_episodes"] > 0
                             and normalized["watched_episodes"] >= normalized["total_episodes"]
@@ -816,6 +823,7 @@ class MediaLibraryKeeper(_PluginBase):
             "played_source_counts": {
                 "IsPlayed=true": len(played_item_ids),
                 "UserData.Played": len(played_media_ids),
+                "detail.UserData": detail_user_data_count,
             },
             "emby_played_episode_count": played_episode_count,
             "played_episode_source_counts": {
@@ -862,6 +870,29 @@ class MediaLibraryKeeper(_PluginBase):
             start += limit
         return item_ids
 
+    def _fetch_emby_item_detail(self, service: Any, user_id: str, item_id: Any) -> Dict[str, Any]:
+        clean_id = self._clean_text(item_id)
+        if not clean_id:
+            return {}
+        fields = quote(
+            "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,"
+            "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
+            "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags,UserDataPlayCount,UserDataLastPlayedDate"
+        )
+        url = (
+            f"[HOST]emby/Users/{user_id}/Items/{quote(clean_id)}"
+            f"?Fields={fields}&EnableUserData=true&api_key=[APIKEY]"
+        )
+        response = service.get_data(url)
+        data = response.json() if hasattr(response, "json") else response
+        return data if isinstance(data, dict) else {}
+
+    def _needs_emby_user_data_detail(self, item: Dict[str, Any]) -> bool:
+        user_data = item.get("UserData") if isinstance(item, dict) else None
+        if not isinstance(user_data, dict) or "Played" not in user_data:
+            return True
+        return self._to_bool(user_data.get("Played")) and not self._clean_text(user_data.get("LastPlayedDate"))
+
     @staticmethod
     def _library_include_types(collection_type: Any) -> str:
         library_type = str(collection_type or "").strip().lower()
@@ -888,6 +919,7 @@ class MediaLibraryKeeper(_PluginBase):
         paths = []
         start = 0
         limit = 500
+        detail_user_data_count = 0
         fields = quote(
             "Path,MediaSources,UserData,DateCreated,UserDataPlayCount,"
             "UserDataLastPlayedDate"
@@ -907,6 +939,11 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             total += len(raw_items)
             for episode in raw_items:
+                if self._needs_emby_user_data_detail(episode):
+                    detail = self._fetch_emby_item_detail(service, user_id, episode.get("Id"))
+                    if detail:
+                        episode = {**episode, **detail}
+                        detail_user_data_count += 1
                 user_data = episode.get("UserData") or {}
                 if self._is_played_user_data(user_data):
                     watched += 1
@@ -926,6 +963,7 @@ class MediaLibraryKeeper(_PluginBase):
             "paths": paths,
             "last_episode_added_at": last_episode_added_at,
             "last_watched_at": last_watched_at,
+            "detail_user_data_count": detail_user_data_count,
         }
 
     def _normalize_emby_library(self, item: Dict[str, Any], service_info: Any, server_name: str) -> Dict[str, Any]:

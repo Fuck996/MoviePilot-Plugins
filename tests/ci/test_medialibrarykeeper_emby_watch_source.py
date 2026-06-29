@@ -11,6 +11,9 @@ def test_medialibrarykeeper_uses_official_emby_watch_state_queries() -> None:
     assert 'user_data.get("PlayCount")' not in source
     assert 'bool(cls._clean_text(user_data.get("LastPlayedDate")))' not in source
     assert "UserData.Played" in source
+    assert "_fetch_emby_item_detail" in source
+    assert "_needs_emby_user_data_detail" in source
+    assert "/Items/{quote(clean_id)}" in source
     assert "started_episodes" not in source
     assert "watching" not in source
     assert "LastPlayedDate" in source
