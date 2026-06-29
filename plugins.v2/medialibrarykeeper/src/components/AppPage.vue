@@ -843,24 +843,27 @@ onUnmounted(() => {
           <div class="mlk-section">
             <VSheet border rounded class="mlk-plan-bar">
               <div>
-                <div class="text-subtitle-1 font-weight-medium">当前选择</div>
+                <div class="mlk-plan-bar-title">
+                  <span class="text-subtitle-1 font-weight-medium">当前选择</span>
+                  <VTooltip :text="selectedPlanExpanded ? '收起待生成明细' : '展开待生成明细'" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <VBtn
+                        v-bind="tooltipProps"
+                        :icon="selectedPlanExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                        variant="text"
+                        size="small"
+                        :disabled="!selectedMedia.length"
+                        @click="selectedPlanExpanded = !selectedPlanExpanded"
+                      />
+                    </template>
+                  </VTooltip>
+                </div>
                 <div class="text-body-2 text-medium-emphasis">
                   已选择 {{ selectedMedia.length }} 项，当前 Emby 可见体积 {{ formatBytes(selectedSize) }}
                 </div>
               </div>
               <VSpacer />
               <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
-              <VTooltip :text="selectedPlanExpanded ? '收起待生成明细' : '展开待生成明细'" location="top">
-                <template #activator="{ props: tooltipProps }">
-                  <VBtn
-                    v-bind="tooltipProps"
-                    :icon="selectedPlanExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-                    variant="text"
-                    :disabled="!selectedMedia.length"
-                    @click="selectedPlanExpanded = !selectedPlanExpanded"
-                  />
-                </template>
-              </VTooltip>
               <VBtn color="primary" variant="flat" :loading="creatingPlan" :disabled="!selectedMedia.length || updatingPlan" @click="createPlan">
                 生成新批次
               </VBtn>
@@ -1708,6 +1711,13 @@ onUnmounted(() => {
 
 .mlk-plan-summary {
   justify-content: space-between;
+}
+
+.mlk-plan-bar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
 }
 
 .mlk-plan-main {
