@@ -1354,6 +1354,12 @@ onUnmounted(() => {
             :items="historySeedRows"
             density="compact"
           >
+            <template #item.downloader="{ item }">
+              <div>{{ item.downloader || '-' }}</div>
+              <div v-if="item.original_downloader && item.original_downloader !== item.downloader" class="text-caption text-medium-emphasis">
+                原 {{ item.original_downloader }}
+              </div>
+            </template>
             <template #item.download_hash="{ item }">{{ item.download_hash ? `${item.download_hash.slice(0, 16)}...` : '-' }}</template>
             <template #item.result="{ item }">
               <VChip :color="item.result === 'success' ? 'success' : 'error'" variant="tonal" size="small">

@@ -43,7 +43,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.33"
+    plugin_version = "0.3.34"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1948,24 +1948,18 @@ class MediaLibraryKeeper(_PluginBase):
         ])
 
     def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
-        allowed_downloaders = self._selected_downloader_names()
         tasks = []
         for record in records:
             downloader = self._clean_text(getattr(record, "downloader", ""))
             download_hash = self._clean_text(getattr(record, "download_hash", ""))
-            if not downloader or not download_hash:
-                continue
-            if allowed_downloaders and downloader not in allowed_downloaders:
-                continue
-            service_info = DownloaderHelper().get_service(name=downloader)
-            dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
-            if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+            if not download_hash:
                 continue
             tasks.append({
                 "record_id": getattr(record, "id", None),
                 "title": self._clean_text(getattr(record, "title", "")),
                 "downloader": downloader,
-                "downloader_type": dtype,
+                "original_downloader": downloader,
+                "downloader_type": "",
                 "download_hash": download_hash,
                 "matched_paths": [self._clean_text(getattr(record, "dest", ""))],
                 "source": "transfer_history",
@@ -2002,18 +1996,11 @@ class MediaLibraryKeeper(_PluginBase):
                 history_items.append(item)
 
         record_ids = {getattr(record, "id", None) for record in records if getattr(record, "id", None) is not None}
-        allowed_downloaders = self._selected_downloader_names()
         tasks: List[Dict[str, Any]] = []
         for item in self._dedupe_records(history_items):
             downloader = self._clean_text(getattr(item, "downloader", ""))
             download_hash = self._clean_text(getattr(item, "download_hash", "")) or self._clean_text(getattr(item, "hash", ""))
-            if not downloader or not download_hash:
-                continue
-            if allowed_downloaders and downloader not in allowed_downloaders:
-                continue
-            service_info = DownloaderHelper().get_service(name=downloader)
-            dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
-            if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+            if not download_hash:
                 continue
             record_id = getattr(item, "transfer_id", None) or getattr(item, "transferhis_id", None)
             if record_id not in record_ids:
@@ -2028,7 +2015,8 @@ class MediaLibraryKeeper(_PluginBase):
                 "record_id": record_id,
                 "title": self._clean_text(getattr(item, "title", "")) or self._clean_text(getattr(item, "torrentname", "")) or title,
                 "downloader": downloader,
-                "downloader_type": dtype,
+                "original_downloader": downloader,
+                "downloader_type": "",
                 "download_hash": download_hash,
                 "matched_paths": matched_paths,
                 "source": "download_history",
@@ -2085,8 +2073,8 @@ class MediaLibraryKeeper(_PluginBase):
         result = []
         seen = set()
         for task in tasks:
-            key = (task.get("downloader"), task.get("download_hash"))
-            if not key[0] or not key[1] or key in seen:
+            key = task.get("download_hash")
+            if not key or key in seen:
                 continue
             seen.add(key)
             result.append(task)
@@ -2191,25 +2179,66 @@ class MediaLibraryKeeper(_PluginBase):
         failed: List[Dict[str, Any]] = []
         for task in tasks:
             try:
-                downloader = task.get("downloader")
-                service_info = helper.get_service(name=downloader)
-                dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
-                if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
-                    raise RuntimeError("Downloader unavailable or unsupported")
-                module = getattr(service_info, "module", None)
-                if not module or not hasattr(module, "remove_torrents"):
-                    raise RuntimeError("Downloader module cannot remove torrents")
-                result = module.remove_torrents(
-                    hashs=[task.get("download_hash")],
-                    delete_file=False,
-                    downloader=downloader,
-                )
-                if result is not True:
-                    raise RuntimeError("Downloader returned failure")
-                deleted.append(task)
+                deleted.append(self._delete_seed_task_from_configured_downloaders(helper, task))
             except Exception as err:
                 failed.append({**task, "error": str(err)})
         return deleted, failed
+
+    def _delete_seed_task_from_configured_downloaders(self, helper: DownloaderHelper, task: Dict[str, Any]) -> Dict[str, Any]:
+        download_hash = self._clean_text(task.get("download_hash"))
+        if not download_hash:
+            raise RuntimeError("Missing download hash")
+        candidates = self._configured_seed_cleanup_downloaders(helper)
+        if not candidates:
+            raise RuntimeError("No configured downloader can remove torrents")
+
+        deleted_downloaders: List[str] = []
+        attempts: List[str] = []
+        for downloader, service_info in candidates:
+            module = getattr(service_info, "module", None)
+            if not module or not hasattr(module, "remove_torrents"):
+                attempts.append(f"{downloader}: remove_torrents unavailable")
+                continue
+            try:
+                result = module.remove_torrents(
+                    hashs=[download_hash],
+                    delete_file=False,
+                    downloader=downloader,
+                )
+            except Exception as err:
+                attempts.append(f"{downloader}: {err}")
+                continue
+            if result is True:
+                deleted_downloaders.append(downloader)
+            else:
+                attempts.append(f"{downloader}: returned failure")
+
+        if not deleted_downloaders:
+            raise RuntimeError("; ".join(attempts) or "Downloader returned failure")
+
+        original_downloader = self._clean_text(task.get("original_downloader") or task.get("downloader"))
+        return {
+            **task,
+            "downloader": ",".join(deleted_downloaders),
+            "original_downloader": original_downloader,
+            "delete_attempts": attempts,
+        }
+
+    def _configured_seed_cleanup_downloaders(self, helper: DownloaderHelper) -> List[Tuple[str, Any]]:
+        configured = list(self._config.get("downloaders") or [])
+        if not configured:
+            configured = [option["value"] for option in self._downloader_options() if option.get("value")]
+        result: List[Tuple[str, Any]] = []
+        seen = set()
+        for downloader in configured:
+            if not downloader or downloader in seen:
+                continue
+            seen.add(downloader)
+            service_info = helper.get_service(name=downloader)
+            dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
+            if dtype in self.SUPPORTED_DOWNLOADER_TYPES:
+                result.append((downloader, service_info))
+        return result
 
     def _download_task_matches_deleted_paths(self, task: Dict[str, Any], deleted_paths: List[Any]) -> bool:
         matched_paths = task.get("matched_paths") or []

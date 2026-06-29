@@ -54,6 +54,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
     frontend = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
     provider = Path("plugins.v2/medialibrarykeeper/src/provider.js").read_text(encoding="utf-8")
+    record_task_source = source.split("def _download_tasks_from_records", 1)[1].split("def _download_tasks_from_history", 1)[0]
+    history_task_source = source.split("def _download_tasks_from_history", 1)[1].split("def _query_download_history_by_path", 1)[0]
 
     assert "DATA_KEY_CLEANUP_QUEUE" in source
     assert "_enqueue_cleanup_plan" in source
@@ -63,6 +65,18 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_with_scraping_targets" in source
     assert "DownloadHistoryOper" in source
     assert "get_file_by_fullpath" in source
+    assert "_delete_seed_task_from_configured_downloaders" in source
+    assert "_configured_seed_cleanup_downloaders" in source
+    assert "_selected_downloader_names" not in record_task_source
+    assert "_selected_downloader_names" not in history_task_source
+    assert "SUPPORTED_DOWNLOADER_TYPES" not in record_task_source
+    assert "SUPPORTED_DOWNLOADER_TYPES" not in history_task_source
+    assert '"original_downloader": downloader' in source
+    assert 'key = task.get("download_hash")' in source
+    assert 'module.remove_torrents(' in source
+    assert 'downloader=downloader' in source
+    assert "original_downloader" in frontend
+    assert "original_downloader" in provider
     assert "historyDetailDialog" in frontend
     assert "cleanupQueueRows" in frontend
     assert "compactQueueItem" in provider
