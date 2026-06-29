@@ -395,12 +395,51 @@ function loadCachedStatus() {
 
 function applyStatus(data, options = {}) {
   if (!data) return
-  status.value = data
+  const normalized = filterCleanedMediaFromStatus(data)
+  status.value = normalized.status
+  if (normalized.removedIds.size) {
+    selectedMedia.value = selectedMedia.value.filter(item => !normalized.removedIds.has(item.id))
+  }
   configDraft.value = toEditableConfig(status.value.config)
   deleteSource.value = Boolean(configDraft.value.default_delete_source)
   if (options.persist !== false) {
-    writeStatusCache(props.pluginId, data)
+    writeStatusCache(props.pluginId, status.value)
   }
+}
+
+function filterCleanedMediaFromStatus(data) {
+  const removedIds = cleanedMediaIdsFromHistory(data.history || [])
+  if (!removedIds.size) return { status: data, removedIds }
+  const keepMedia = item => !removedIds.has(item.id)
+  return {
+    status: {
+      ...data,
+      media: (data.media || []).filter(keepMedia),
+      recommendations: (data.recommendations || []).filter(keepMedia),
+      pending_plan: data.pending_plan
+        ? {
+            ...data.pending_plan,
+            items: (data.pending_plan.items || []).filter(item => !removedIds.has(item.media_id)),
+          }
+        : data.pending_plan,
+    },
+    removedIds,
+  }
+}
+
+function cleanedMediaIdsFromHistory(history) {
+  const removedIds = new Set()
+  for (const record of history || []) {
+    const failedIds = new Set((record.failed_targets || [])
+      .filter(target => target.kind === 'dest' && target.media_id)
+      .map(target => target.media_id))
+    for (const target of record.deleted_targets || []) {
+      if (target.kind === 'dest' && target.media_id && !failedIds.has(target.media_id)) {
+        removedIds.add(target.media_id)
+      }
+    }
+  }
+  return removedIds
 }
 
 async function saveConfig() {

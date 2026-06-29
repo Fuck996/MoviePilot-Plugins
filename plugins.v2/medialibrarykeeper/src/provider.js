@@ -44,7 +44,7 @@ export function createDefaultConfig() {
 }
 
 export function statusCacheKey(pluginId = 'MediaLibraryKeeper') {
-  return `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:status:v1`
+  return `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:status:v2`
 }
 
 export function readStatusCache(pluginId) {

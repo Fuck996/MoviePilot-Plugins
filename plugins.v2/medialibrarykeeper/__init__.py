@@ -43,7 +43,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.37"
+    plugin_version = "0.3.38"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -517,8 +517,38 @@ class MediaLibraryKeeper(_PluginBase):
             history = self._load_history()
             history.insert(0, result)
             self.save_data(self.DATA_KEY_HISTORY, history[:50])
+            self._prune_snapshot_after_cleanup(result)
         if self._config.get("notify_enabled"):
             self._notify_cleanup_result(result)
+
+    def _prune_snapshot_after_cleanup(self, result: Dict[str, Any]) -> None:
+        removed_media_ids = self._cleanup_removed_media_ids(result)
+        if not removed_media_ids:
+            return
+        snapshot = self._load_snapshot()
+        media_items = snapshot.get("media")
+        if not isinstance(media_items, list):
+            return
+        next_media = [item for item in media_items if item.get("id") not in removed_media_ids]
+        if len(next_media) == len(media_items):
+            return
+        patched = dict(snapshot)
+        patched["media"] = next_media
+        self.save_data(self.DATA_KEY_SNAPSHOT, patched)
+        logger.info(f"媒体库管家清理缓存刷新：已从扫描快照移除 {len(media_items) - len(next_media)} 个已清理媒体")
+
+    @staticmethod
+    def _cleanup_removed_media_ids(result: Dict[str, Any]) -> set:
+        failed_media_ids = {
+            target.get("media_id")
+            for target in result.get("failed_targets", []) or []
+            if target.get("kind") == "dest" and target.get("media_id")
+        }
+        return {
+            target.get("media_id")
+            for target in result.get("deleted_targets", []) or []
+            if target.get("kind") == "dest" and target.get("media_id") and target.get("media_id") not in failed_media_ids
+        }
 
     def _queue_status(self) -> List[Dict[str, Any]]:
         queue = self._load_cleanup_queue()
