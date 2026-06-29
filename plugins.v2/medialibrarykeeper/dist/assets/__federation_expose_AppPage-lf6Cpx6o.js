@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-CQmFw3RA.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-Dy650yl2.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers} = await importShared('vue');
 
@@ -1574,13 +1574,21 @@ return (_ctx, _cache) => {
                         _cache[60] || (_cache[60] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "集数", -1)),
                         _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.type === 'series' ? `${selectedMediaDetail.value.watched_episodes}/${selectedMediaDetail.value.total_episodes}` : '-'), 1)
                       ]),
+                      _createElementVNode("div", null, [
+                        _cache[61] || (_cache[61] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "所属卷", -1)),
+                        _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.volume_name || '-'), 1)
+                      ]),
+                      _createElementVNode("div", null, [
+                        _cache[62] || (_cache[62] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "卷剩余", -1)),
+                        _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.volume_free_percent !== null && selectedMediaDetail.value.volume_free_percent !== undefined ? `${selectedMediaDetail.value.volume_free_percent}%` : '-'), 1)
+                      ]),
                       _createElementVNode("div", _hoisted_69, [
-                        _cache[61] || (_cache[61] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "路径", -1)),
+                        _cache[63] || (_cache[63] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "路径", -1)),
                         _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.path_preview || selectedMediaDetail.value.path || '-'), 1)
                       ]),
                       (selectedMediaDetail.value.genres?.length)
                         ? (_openBlock(), _createElementBlock("div", _hoisted_70, [
-                            _cache[62] || (_cache[62] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "类型", -1)),
+                            _cache[64] || (_cache[64] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "类型", -1)),
                             _createElementVNode("div", _hoisted_71, [
                               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedMediaDetail.value.genres, (genre) => {
                                 return (_openBlock(), _createBlock(_component_VChip, {
@@ -1625,7 +1633,7 @@ return (_ctx, _cache) => {
                         loading: planning.value,
                         onClick: _cache[26] || (_cache[26] = $event => (createSinglePlan(selectedMediaDetail.value)))
                       }, {
-                        default: _withCtx(() => [...(_cache[63] || (_cache[63] = [
+                        default: _withCtx(() => [...(_cache[65] || (_cache[65] = [
                           _createTextVNode(" 为此项生成计划 ", -1)
                         ]))]),
                         _: 1
@@ -1650,7 +1658,7 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createBlock(_component_VCard, { key: 0 }, {
               default: _withCtx(() => [
                 _createVNode(_component_VCardTitle, null, {
-                  default: _withCtx(() => [...(_cache[64] || (_cache[64] = [
+                  default: _withCtx(() => [...(_cache[66] || (_cache[66] = [
                     _createTextVNode("审核删除目标", -1)
                   ]))]),
                   _: 1
@@ -1686,7 +1694,7 @@ return (_ctx, _cache) => {
                                         variant: "tonal",
                                         size: "small"
                                       }, {
-                                        default: _withCtx(() => [...(_cache[65] || (_cache[65] = [
+                                        default: _withCtx(() => [...(_cache[67] || (_cache[67] = [
                                           _createTextVNode(" 目录映射 ", -1)
                                         ]))]),
                                         _: 1
@@ -1717,7 +1725,7 @@ return (_ctx, _cache) => {
                       variant: "text",
                       onClick: _cache[28] || (_cache[28] = $event => (planTargetDialog.value = false))
                     }, {
-                      default: _withCtx(() => [...(_cache[66] || (_cache[66] = [
+                      default: _withCtx(() => [...(_cache[68] || (_cache[68] = [
                         _createTextVNode("关闭", -1)
                       ]))]),
                       _: 1
@@ -1741,7 +1749,7 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, null, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, null, {
-              default: _withCtx(() => [...(_cache[67] || (_cache[67] = [
+              default: _withCtx(() => [...(_cache[69] || (_cache[69] = [
                 _createTextVNode("确认执行清理计划", -1)
               ]))]),
               _: 1
@@ -1755,7 +1763,7 @@ return (_ctx, _cache) => {
                   density: "comfortable",
                   class: "mt-4"
                 }, {
-                  default: _withCtx(() => [...(_cache[68] || (_cache[68] = [
+                  default: _withCtx(() => [...(_cache[70] || (_cache[70] = [
                     _createTextVNode(" 这是不可逆操作；请确认媒体库文件和源文件范围都符合预期。 ", -1)
                   ]))]),
                   _: 1
@@ -1778,7 +1786,7 @@ return (_ctx, _cache) => {
                   variant: "text",
                   onClick: _cache[31] || (_cache[31] = $event => (executeDialog.value = false))
                 }, {
-                  default: _withCtx(() => [...(_cache[69] || (_cache[69] = [
+                  default: _withCtx(() => [...(_cache[71] || (_cache[71] = [
                     _createTextVNode("取消", -1)
                   ]))]),
                   _: 1
@@ -1790,7 +1798,7 @@ return (_ctx, _cache) => {
                   disabled: !executeConfirmed.value,
                   onClick: executePlan
                 }, {
-                  default: _withCtx(() => [...(_cache[70] || (_cache[70] = [
+                  default: _withCtx(() => [...(_cache[72] || (_cache[72] = [
                     _createTextVNode(" 确认删除 ", -1)
                   ]))]),
                   _: 1
@@ -1808,7 +1816,7 @@ return (_ctx, _cache) => {
       modelValue: fallbackToast.value.show,
       "onUpdate:modelValue": _cache[33] || (_cache[33] = $event => ((fallbackToast.value.show) = $event)),
       color: fallbackToast.value.color,
-      location: "top right",
+      location: "bottom right",
       timeout: "3200"
     }, {
       default: _withCtx(() => [
@@ -1821,6 +1829,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-826b8a34"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1e78d348"]]);
 
 export { AppPage as default };

@@ -882,6 +882,14 @@ onMounted(() => {
                 <div class="text-caption text-medium-emphasis">集数</div>
                 <div>{{ selectedMediaDetail.type === 'series' ? `${selectedMediaDetail.watched_episodes}/${selectedMediaDetail.total_episodes}` : '-' }}</div>
               </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">所属卷</div>
+                <div>{{ selectedMediaDetail.volume_name || '-' }}</div>
+              </div>
+              <div>
+                <div class="text-caption text-medium-emphasis">卷剩余</div>
+                <div>{{ selectedMediaDetail.volume_free_percent !== null && selectedMediaDetail.volume_free_percent !== undefined ? `${selectedMediaDetail.volume_free_percent}%` : '-' }}</div>
+              </div>
               <div class="mlk-detail-wide">
                 <div class="text-caption text-medium-emphasis">路径</div>
                 <div>{{ selectedMediaDetail.path_preview || selectedMediaDetail.path || '-' }}</div>
@@ -962,7 +970,7 @@ onMounted(() => {
       </VCard>
     </VDialog>
 
-    <VSnackbar v-model="fallbackToast.show" :color="fallbackToast.color" location="top right" timeout="3200">
+    <VSnackbar v-model="fallbackToast.show" :color="fallbackToast.color" location="bottom right" timeout="3200">
       {{ fallbackToast.text }}
     </VSnackbar>
   </div>

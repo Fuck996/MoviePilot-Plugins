@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.12"
+    plugin_version = "0.3.13"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -283,10 +283,11 @@ class MediaLibraryKeeper(_PluginBase):
                 logger.error(f"媒体库管家读取 Emby {server_name} 失败：{err}")
                 errors.append(f"{server_name}: {err}")
 
+        media_items = self._attach_media_volume_info(self._dedupe_media(media))
         snapshot = {
             "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "libraries": self._dedupe_libraries(libraries),
-            "media": self._dedupe_media(media),
+            "media": media_items,
             "errors": errors,
         }
         self.save_data(self.DATA_KEY_SNAPSHOT, snapshot)
@@ -1604,6 +1605,82 @@ class MediaLibraryKeeper(_PluginBase):
                     }
                 )
         return status
+
+    def _attach_media_volume_info(self, media_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        volume_cache: Dict[Any, Dict[str, Any]] = {}
+        for item in media_items:
+            volumes = []
+            for path in self._media_volume_paths(item):
+                volume = self._volume_status_for_path(path, volume_cache)
+                if volume and volume.get("key") not in {value.get("key") for value in volumes}:
+                    volumes.append(volume)
+            item["volumes"] = [{key: value for key, value in volume.items() if key != "key"} for volume in volumes]
+            if not volumes:
+                item["volume_name"] = ""
+                item["volume_free_percent"] = None
+                item["volume_summary"] = ""
+                continue
+            lowest = min(volumes, key=lambda volume: float(volume.get("free_percent") or 0))
+            item["volume_name"] = " / ".join(volume.get("display_name") or volume.get("mount_point") or "" for volume in volumes)
+            item["volume_free_percent"] = lowest.get("free_percent")
+            item["volume_summary"] = " / ".join(
+                f"{volume.get('display_name') or volume.get('mount_point')} {volume.get('free_percent')}%"
+                for volume in volumes
+            )
+        return media_items
+
+    def _media_volume_paths(self, item: Dict[str, Any]) -> List[Any]:
+        paths = []
+        if item.get("type") == "series":
+            paths.extend(item.get("episode_paths") or [])
+        if item.get("path"):
+            paths.append(item.get("path"))
+        result = []
+        for path in paths:
+            clean_path = self._clean_text(path)
+            if clean_path and clean_path not in result:
+                result.append(clean_path)
+        return result
+
+    def _volume_status_for_path(self, path: Any, cache: Dict[Any, Dict[str, Any]]) -> Dict[str, Any]:
+        disk_path = self._existing_disk_path(path)
+        if not disk_path:
+            return {}
+        disk = self._disk_identity(disk_path)
+        if not disk:
+            return {}
+        key = disk.get("key")
+        if key in cache:
+            return cache[key]
+        try:
+            usage = shutil.disk_usage(disk["path"])
+            free_percent = round(usage.free * 100 / usage.total, 2) if usage.total else 0
+            warning = usage.free <= self._config["disk_warning_free_gb"] * 1024 ** 3 or free_percent <= self._config["disk_warning_free_percent"]
+            cache[key] = {
+                "key": key,
+                "path": disk["path"],
+                "display_name": disk.get("display_name") or disk["path"],
+                "mount_point": disk.get("mount_point") or disk["path"],
+                "device": disk.get("device") or "",
+                "total": usage.total,
+                "free": usage.free,
+                "free_percent": free_percent,
+                "warning": warning,
+            }
+        except Exception as err:
+            cache[key] = {
+                "key": key,
+                "path": disk["path"],
+                "display_name": disk.get("display_name") or disk["path"],
+                "mount_point": disk.get("mount_point") or disk["path"],
+                "device": disk.get("device") or "",
+                "total": 0,
+                "free": 0,
+                "free_percent": 0,
+                "warning": False,
+                "error": str(err),
+            }
+        return cache[key]
 
     def _media_disks(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         snapshot = snapshot or self._load_snapshot()

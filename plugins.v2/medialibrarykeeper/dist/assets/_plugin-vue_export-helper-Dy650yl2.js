@@ -58,10 +58,129 @@ function readStatusCache(pluginId) {
 
 function writeStatusCache(pluginId, status) {
   if (typeof localStorage === 'undefined' || !status) return
-  localStorage.setItem(statusCacheKey(pluginId), JSON.stringify({
+  const key = statusCacheKey(pluginId);
+  try {
+    localStorage.setItem(key, JSON.stringify(createCachePayload(status)));
+  } catch {
+    try {
+      localStorage.removeItem(key);
+      localStorage.setItem(key, JSON.stringify(createCachePayload(compactStatus(status))));
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }
+}
+
+function createCachePayload(status) {
+  return {
     cached_at: new Date().toISOString(),
     status,
-  }));
+  }
+}
+
+function compactStatus(status) {
+  return {
+    ...status,
+    media: (status.media || []).map(compactMediaItem),
+    recommendations: (status.recommendations || []).map(compactMediaItem),
+    pending_plan: compactPlan(status.pending_plan),
+    history: (status.history || []).slice(0, 20).map(compactHistoryItem),
+  }
+}
+
+function compactMediaItem(item) {
+  return pickFields(item, [
+    'id',
+    'server',
+    'server_type',
+    'item_id',
+    'title',
+    'type',
+    'type_label',
+    'year',
+    'library',
+    'library_id',
+    'library_item_id',
+    'library_type',
+    'path_preview',
+    'rating',
+    'image_url',
+    'genres',
+    'premiere_date',
+    'added_at',
+    'last_episode_added_at',
+    'last_watched_at',
+    'watched',
+    'progress',
+    'watched_episodes',
+    'total_episodes',
+    'size',
+    'reason',
+    'message',
+    'volume_name',
+    'volume_free_percent',
+    'volume_summary',
+    'volumes',
+  ])
+}
+
+function compactPlan(plan) {
+  if (!plan) return plan
+  return {
+    ...plan,
+    items: (plan.items || []).map(item => ({
+      ...pickFields(item, [
+        'media_id',
+        'title',
+        'type',
+        'type_label',
+        'watched',
+        'size',
+        'library',
+        'rating',
+        'progress',
+        'last_episode_added_at',
+        'last_watched_at',
+        'status',
+        'message',
+      ]),
+      delete_targets: (item.delete_targets || []).map(compactDeleteTarget),
+    })),
+  }
+}
+
+function compactDeleteTarget(target) {
+  return pickFields(target, [
+    'record_id',
+    'kind',
+    'kind_label',
+    'path',
+    'path_preview',
+    'size',
+    'match_source',
+    'directory_mapping',
+  ])
+}
+
+function compactHistoryItem(item) {
+  return pickFields(item, [
+    'plan_id',
+    'created_at',
+    'status',
+    'delete_source',
+    'reclaim_size',
+    'deleted_records',
+    'message',
+  ])
+}
+
+function pickFields(source, fields) {
+  return fields.reduce((result, field) => {
+    if (source && source[field] !== undefined) {
+      result[field] = source[field];
+    }
+    return result
+  }, {})
 }
 
 function cloneConfig(config) {
