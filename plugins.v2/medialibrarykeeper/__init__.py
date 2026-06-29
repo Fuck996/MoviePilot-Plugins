@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.17"
+    plugin_version = "0.3.18"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -572,13 +572,7 @@ class MediaLibraryKeeper(_PluginBase):
     def _is_played_user_data(cls, user_data: Dict[str, Any]) -> bool:
         if not isinstance(user_data, dict):
             return False
-        if cls._to_bool(user_data.get("Played")):
-            return True
-        if cls._to_int(user_data.get("PlayCount"), 0) > 0:
-            return True
-        if cls._clean_text(user_data.get("LastPlayedDate")):
-            return True
-        return cls._to_float(user_data.get("PlayedPercentage"), 0) >= 90
+        return cls._to_bool(user_data.get("Played"))
 
     @classmethod
     def _has_play_activity_user_data(cls, user_data: Dict[str, Any]) -> bool:
@@ -704,17 +698,30 @@ class MediaLibraryKeeper(_PluginBase):
         start = 0
         limit = 200
         include_types = self._library_include_types(library.get("type"))
+        played_item_ids = self._fetch_emby_filtered_item_ids(
+            service, user_id, library_item_id, include_types, "IsPlayed"
+        )
+        resumable_item_ids = self._fetch_emby_filtered_item_ids(
+            service, user_id, library_item_id, include_types, "IsResumable"
+        )
+        played_episode_ids = self._fetch_emby_filtered_item_ids(
+            service, user_id, library_item_id, "Episode", "IsPlayed"
+        )
+        resumable_episode_ids = self._fetch_emby_filtered_item_ids(
+            service, user_id, library_item_id, "Episode", "IsResumable"
+        )
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
             "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags,UserDataPlayCount,"
-            "UserDataLastPlayedDate"
+            "UserDataLastPlayedDate,PlaybackPositionTicks"
         )
         while True:
             url = (
                 f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(library_item_id)}&Recursive=true"
                 f"&IncludeItemTypes={include_types}"
                 f"&Fields={fields}&ImageTypeLimit=1&EnableTotalRecordCount=false"
+                f"&EnableUserData=true&GroupItems=false"
                 f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
             )
             response = service.get_data(url)
@@ -723,11 +730,24 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
-                normalized = self._normalize_emby_item(item, service_info, server_name, library)
+                normalized = self._normalize_emby_item(
+                    item,
+                    service_info,
+                    server_name,
+                    library,
+                    self._clean_text(item.get("Id")) in played_item_ids,
+                    self._clean_text(item.get("Id")) in resumable_item_ids,
+                )
                 if not normalized:
                     continue
                 if normalized.get("type") == "series":
-                    stats = self._fetch_series_episode_stats(service, user_id, normalized.get("item_id"))
+                    stats = self._fetch_series_episode_stats(
+                        service,
+                        user_id,
+                        normalized.get("item_id"),
+                        played_episode_ids,
+                        resumable_episode_ids,
+                    )
                     if stats:
                         normalized["total_episodes"] = stats["total_episodes"] or normalized.get("total_episodes", 0)
                         normalized["watched_episodes"] = stats["watched_episodes"]
@@ -737,8 +757,8 @@ class MediaLibraryKeeper(_PluginBase):
                         normalized["last_episode_added_at"] = stats.get("last_episode_added_at") or normalized.get("last_episode_added_at", "")
                         normalized["last_watched_at"] = stats.get("last_watched_at") or normalized.get("last_watched_at", "")
                         normalized["watched"] = (
-                            normalized["total_episodes"] > 0
-                            and normalized["watched_episodes"] >= normalized["total_episodes"]
+                            normalized.get("item_id") in played_item_ids
+                            or self._is_played_user_data(item.get("UserData") or {})
                         )
                         normalized["watch_state"] = self._watch_state(
                             normalized["watched_episodes"],
@@ -760,6 +780,41 @@ class MediaLibraryKeeper(_PluginBase):
             start += limit
         return items
 
+    def _fetch_emby_filtered_item_ids(
+        self,
+        service: Any,
+        user_id: str,
+        parent_id: str,
+        include_types: str,
+        item_filter: str,
+    ) -> set:
+        item_ids = set()
+        if not parent_id or not include_types or not item_filter:
+            return item_ids
+        start = 0
+        limit = 500
+        while True:
+            url = (
+                f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(parent_id)}&Recursive=true"
+                f"&IncludeItemTypes={include_types}&Filters={quote(item_filter)}"
+                f"&Fields=UserData,UserDataPlayCount,UserDataLastPlayedDate,PlaybackPositionTicks"
+                f"&EnableUserData=true&GroupItems=false&EnableTotalRecordCount=false"
+                f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
+            )
+            response = service.get_data(url)
+            data = response.json() if hasattr(response, "json") else response
+            raw_items = data.get("Items") if isinstance(data, dict) else []
+            if not raw_items:
+                break
+            for item in raw_items:
+                item_id = self._clean_text(item.get("Id"))
+                if item_id:
+                    item_ids.add(item_id)
+            if len(raw_items) < limit:
+                break
+            start += limit
+        return item_ids
+
     @staticmethod
     def _library_include_types(collection_type: Any) -> str:
         library_type = str(collection_type or "").strip().lower()
@@ -769,10 +824,19 @@ class MediaLibraryKeeper(_PluginBase):
             return "Series"
         return "Movie,Series"
 
-    def _fetch_series_episode_stats(self, service: Any, user_id: str, series_id: Any) -> Dict[str, Any]:
+    def _fetch_series_episode_stats(
+        self,
+        service: Any,
+        user_id: str,
+        series_id: Any,
+        played_episode_ids: Optional[set] = None,
+        resumable_episode_ids: Optional[set] = None,
+    ) -> Dict[str, Any]:
         item_id = self._clean_text(series_id)
         if not item_id:
             return {}
+        played_episode_ids = played_episode_ids or set()
+        resumable_episode_ids = resumable_episode_ids or set()
         total = 0
         watched = 0
         started = 0
@@ -780,13 +844,17 @@ class MediaLibraryKeeper(_PluginBase):
         paths = []
         start = 0
         limit = 500
-        fields = quote("Path,MediaSources,UserData,DateCreated,UserDataPlayCount,UserDataLastPlayedDate")
+        fields = quote(
+            "Path,MediaSources,UserData,DateCreated,UserDataPlayCount,"
+            "UserDataLastPlayedDate,PlaybackPositionTicks"
+        )
         last_episode_added_at = ""
         last_watched_at = ""
         while True:
             url = (
                 f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(item_id)}&Recursive=true&IncludeItemTypes=Episode"
-                f"&Fields={fields}&EnableTotalRecordCount=false&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
+                f"&Fields={fields}&EnableUserData=true&GroupItems=false&EnableTotalRecordCount=false"
+                f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
             )
             response = service.get_data(url)
             data = response.json() if hasattr(response, "json") else response
@@ -795,10 +863,15 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             total += len(raw_items)
             for episode in raw_items:
+                episode_id = self._clean_text(episode.get("Id"))
                 user_data = episode.get("UserData") or {}
-                if self._is_played_user_data(user_data):
+                if episode_id in played_episode_ids or self._is_played_user_data(user_data):
                     watched += 1
-                if self._has_play_activity_user_data(user_data):
+                if (
+                    episode_id in played_episode_ids
+                    or episode_id in resumable_episode_ids
+                    or self._has_play_activity_user_data(user_data)
+                ):
                     started += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
@@ -841,6 +914,8 @@ class MediaLibraryKeeper(_PluginBase):
         service_info: Any,
         server_name: str,
         library: Dict[str, Any],
+        is_played: bool = False,
+        is_resumable: bool = False,
     ) -> Dict[str, Any]:
         item_type = self._clean_text(item.get("Type")).lower()
         if item_type not in {"movie", "series"}:
@@ -848,7 +923,7 @@ class MediaLibraryKeeper(_PluginBase):
         is_series = item_type == "series"
         user_data = item.get("UserData") or {}
         total_episodes = self._to_int(item.get("RecursiveItemCount") or item.get("ChildCount"), 0) if is_series else 1
-        played = self._is_played_user_data(user_data)
+        played = is_played or self._is_played_user_data(user_data)
         if is_series:
             if played:
                 watched_episodes = total_episodes
@@ -859,8 +934,12 @@ class MediaLibraryKeeper(_PluginBase):
                 watched_episodes = 0
         else:
             watched_episodes = 1 if played else 0
-        watched = played or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
-        started_episodes = watched_episodes if is_series else (1 if self._has_play_activity_user_data(user_data) else 0)
+        watched = played
+        started_episodes = (
+            max(watched_episodes, 1 if is_resumable else 0)
+            if is_series
+            else (1 if is_resumable or self._has_play_activity_user_data(user_data) else 0)
+        )
         watch_state = self._watch_state(watched_episodes, total_episodes, is_series, watched, started_episodes)
         path = self._clean_text(item.get("Path"))
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
