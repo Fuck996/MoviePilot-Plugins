@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.event import Event, eventmanager
 from app.core.security import verify_resource_token
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.downloader import DownloaderHelper
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
 from app.plugins import _PluginBase
@@ -36,7 +37,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.9"
+    plugin_version = "0.3.10"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -47,6 +48,7 @@ class MediaLibraryKeeper(_PluginBase):
     DATA_KEY_PENDING_PLAN = "pending_plan"
     DATA_KEY_SNAPSHOT = "snapshot"
     DATA_KEY_LAST_DISK_WARNING = "last_disk_warning"
+    SUPPORTED_DOWNLOADER_TYPES = {"qbittorrent", "transmission"}
 
     def __init__(self):
         super().__init__()
@@ -205,6 +207,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "history": self._load_history(),
                 "capabilities": self._capabilities(),
                 "media_server_options": self._media_server_options(),
+                "downloader_options": self._downloader_options(),
                 "cache": self._cache_meta(snapshot),
                 "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
@@ -426,6 +429,8 @@ class MediaLibraryKeeper(_PluginBase):
             "ai_suggestions": False,
             "default_delete_source": False,
             "mediaservers": [],
+            "downloaders": [],
+            "delete_seed_tasks": False,
             "library_names": [],
             "cleanup_libraries": [],
             "cleanup_operator": "and",
@@ -440,7 +445,7 @@ class MediaLibraryKeeper(_PluginBase):
     def _normalize_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
         defaults = cls._default_config()
         normalized = {**defaults, **(config or {})}
-        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source"]:
+        for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source", "delete_seed_tasks"]:
             normalized[key] = cls._to_bool(normalized.get(key, defaults[key]))
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
@@ -457,7 +462,7 @@ class MediaLibraryKeeper(_PluginBase):
         normalized["cleanup_unwatched_days"] = max(cls._to_int(normalized.get("cleanup_unwatched_days"), 0), 0)
         normalized["cleanup_min_size_gb"] = max(cls._to_int(normalized.get("cleanup_min_size_gb"), 0), 0)
         normalized["cleanup_max_rating"] = max(cls._to_float(normalized.get("cleanup_max_rating"), 0), 0)
-        for key in ["mediaservers", "library_names", "cleanup_libraries"]:
+        for key in ["mediaservers", "downloaders", "library_names", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
         return normalized
 
@@ -505,6 +510,27 @@ class MediaLibraryKeeper(_PluginBase):
         except Exception as err:
             logger.warning(f"媒体库管家读取媒体服务器配置失败：{err}")
         return options
+
+    def _downloader_options(self) -> List[Dict[str, str]]:
+        options = []
+        try:
+            services = DownloaderHelper().get_services() or {}
+            for name, service_info in services.items():
+                dtype = self._clean_text(getattr(service_info, "type", "")).lower()
+                if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+                    continue
+                title = f"{name} ({self._downloader_type_label(dtype)})"
+                options.append({"title": title, "value": name})
+        except Exception as err:
+            logger.warning(f"媒体库管家读取下载器配置失败：{err}")
+        return options
+
+    @staticmethod
+    def _downloader_type_label(dtype: str) -> str:
+        return {
+            "qbittorrent": "QB",
+            "transmission": "Transmission",
+        }.get(dtype, dtype)
 
     def _active_emby_services(self) -> Dict[str, Any]:
         name_filters = self._config.get("mediaservers") or None
@@ -970,6 +996,7 @@ class MediaLibraryKeeper(_PluginBase):
             "last_episode_added_at": media.get("last_episode_added_at"),
             "last_watched_at": media.get("last_watched_at"),
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
+            "download_tasks": self._download_tasks_from_records(records),
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
             "message": message,
@@ -1066,8 +1093,51 @@ class MediaLibraryKeeper(_PluginBase):
             "type": self._clean_text(getattr(record, "type", "")),
             "src": self._path_preview(getattr(record, "src", "")),
             "dest": self._path_preview(getattr(record, "dest", "")),
+            "downloader": self._clean_text(getattr(record, "downloader", "")),
+            "download_hash": self._clean_text(getattr(record, "download_hash", "")),
             "date": self._clean_text(getattr(record, "date", "")),
         }
+
+    def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
+        allowed_downloaders = self._selected_downloader_names()
+        tasks = []
+        for record in records:
+            downloader = self._clean_text(getattr(record, "downloader", ""))
+            download_hash = self._clean_text(getattr(record, "download_hash", ""))
+            if not downloader or not download_hash:
+                continue
+            if allowed_downloaders and downloader not in allowed_downloaders:
+                continue
+            service_info = DownloaderHelper().get_service(name=downloader)
+            dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
+            if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+                continue
+            tasks.append({
+                "record_id": getattr(record, "id", None),
+                "title": self._clean_text(getattr(record, "title", "")),
+                "downloader": downloader,
+                "downloader_type": dtype,
+                "download_hash": download_hash,
+            })
+        return self._dedupe_download_tasks(tasks)
+
+    def _selected_downloader_names(self) -> set:
+        configured = set(self._config.get("downloaders") or [])
+        if configured:
+            return configured
+        return {option["value"] for option in self._downloader_options() if option.get("value")}
+
+    @staticmethod
+    def _dedupe_download_tasks(tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        result = []
+        seen = set()
+        for task in tasks:
+            key = (task.get("downloader"), task.get("download_hash"))
+            if not key[0] or not key[1] or key in seen:
+                continue
+            seen.add(key)
+            result.append(task)
+        return result
 
     @staticmethod
     def _path_matches(media_path: str, record_path: str) -> bool:
@@ -1099,6 +1169,7 @@ class MediaLibraryKeeper(_PluginBase):
 
         oper = TransferHistoryOper()
         deleted_records = 0
+        deleted_seed_tasks, failed_seed_tasks = self._delete_seed_tasks(plan, record_status)
         for record_id, ok in record_status.items():
             if not ok or record_id is None:
                 continue
@@ -1108,8 +1179,18 @@ class MediaLibraryKeeper(_PluginBase):
             except Exception as err:
                 failed_targets.append({"record_id": record_id, "kind": "record", "path": "", "error": f"整理记录删除失败：{err}"})
 
+        for task in failed_seed_tasks:
+            failed_targets.append({
+                "record_id": task.get("record_id"),
+                "kind": "downloader",
+                "path": task.get("download_hash", ""),
+                "path_preview": f"{task.get('downloader')} / {task.get('download_hash', '')[:12]}",
+                "error": task.get("error") or "下载器任务删除失败",
+            })
+
         reclaim_size = self._sum_target_size(deleted_targets)
         success = not failed_targets
+        seed_task_text = f"，保种任务 {len(deleted_seed_tasks)} 个" if self._config.get("delete_seed_tasks") else ""
         return {
             "plan_id": plan.get("id"),
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1117,11 +1198,51 @@ class MediaLibraryKeeper(_PluginBase):
             "delete_source": bool(plan.get("delete_source")),
             "reclaim_size": reclaim_size,
             "deleted_records": deleted_records,
+            "deleted_seed_tasks": deleted_seed_tasks,
+            "failed_seed_tasks": failed_seed_tasks,
             "deleted_targets": deleted_targets,
             "failed_targets": failed_targets,
             "items": [{"title": item.get("title"), "type": item.get("type"), "size": item.get("size")} for item in plan.get("items", [])],
-            "message": f"清理完成，删除 {len(deleted_targets)} 个文件，整理记录 {deleted_records} 条。" if success else f"清理未完全成功，失败 {len(failed_targets)} 项，请查看执行记录。",
+            "message": f"清理完成，删除 {len(deleted_targets)} 个文件，整理记录 {deleted_records} 条{seed_task_text}。" if success else f"清理未完全成功，失败 {len(failed_targets)} 项，请查看执行记录。",
         }
+
+    def _delete_seed_tasks(self, plan: Dict[str, Any], record_status: Dict[Any, bool]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        if not self._config.get("delete_seed_tasks"):
+            return [], []
+        successful_record_ids = {record_id for record_id, ok in record_status.items() if ok and record_id is not None}
+        tasks = self._dedupe_download_tasks([
+            task
+            for item in plan.get("items", [])
+            for task in item.get("download_tasks", []) or []
+            if task.get("record_id") in successful_record_ids
+        ])
+        if not tasks:
+            return [], []
+
+        helper = DownloaderHelper()
+        deleted: List[Dict[str, Any]] = []
+        failed: List[Dict[str, Any]] = []
+        for task in tasks:
+            try:
+                downloader = task.get("downloader")
+                service_info = helper.get_service(name=downloader)
+                dtype = self._clean_text(getattr(service_info, "type", "")).lower() if service_info else ""
+                if dtype not in self.SUPPORTED_DOWNLOADER_TYPES:
+                    raise RuntimeError("Downloader unavailable or unsupported")
+                module = getattr(service_info, "module", None)
+                if not module or not hasattr(module, "remove_torrents"):
+                    raise RuntimeError("Downloader module cannot remove torrents")
+                result = module.remove_torrents(
+                    hashs=[task.get("download_hash")],
+                    delete_file=False,
+                    downloader=downloader,
+                )
+                if result is not True:
+                    raise RuntimeError("Downloader returned failure")
+                deleted.append(task)
+            except Exception as err:
+                failed.append({**task, "error": str(err)})
+        return deleted, failed
 
     def _notify_cleanup_result(self, result: Dict[str, Any]) -> None:
         title = "【媒体库管家】清理完成" if result.get("status") == "success" else "【媒体库管家】清理异常"

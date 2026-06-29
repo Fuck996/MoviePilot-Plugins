@@ -21,6 +21,7 @@ const emit = defineEmits(['save', 'close'])
 const config = ref(toEditableConfig())
 const loadingOptions = ref(false)
 const mediaServerOptions = ref([])
+const downloaderOptions = ref([])
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
 
 function saveConfig() {
@@ -32,7 +33,9 @@ async function loadMediaServerOptions() {
   loadingOptions.value = true
   try {
     const response = await props.api.get(`${pluginBase.value}/status`)
-    mediaServerOptions.value = unwrapResponse(response)?.media_server_options || []
+    const status = unwrapResponse(response) || {}
+    mediaServerOptions.value = status.media_server_options || []
+    downloaderOptions.value = status.downloader_options || []
   } finally {
     loadingOptions.value = false
   }
@@ -71,6 +74,18 @@ onMounted(async () => {
         hint="自动读取 MoviePilot 已配置的媒体服务器；留空表示扫描所有 Emby。"
         persistent-hint
       />
+      <VSelect
+        v-model="config.downloaders"
+        label="下载器"
+        :items="downloaderOptions"
+        multiple
+        chips
+        clearable
+        :loading="loadingOptions"
+        :disabled="!downloaderOptions.length"
+        hint="自动读取 MoviePilot 已启用的 QB / Transmission；留空表示全部支持的下载器。"
+        persistent-hint
+      />
       <div class="mlk-config-grid">
         <VTextField v-model.number="config.disk_warning_free_gb" type="number" min="0" label="剩余容量阈值 GB" />
         <VTextField v-model.number="config.disk_warning_free_percent" type="number" min="0" label="剩余比例阈值 %" />
@@ -89,6 +104,7 @@ onMounted(async () => {
       </VAlert>
       <VSwitch v-model="config.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
       <VSwitch v-model="config.default_delete_source" color="error" inset label="默认同时删除源文件" />
+      <VSwitch v-model="config.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
     </div>
   </div>
 </template>

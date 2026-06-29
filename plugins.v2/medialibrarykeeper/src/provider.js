@@ -17,6 +17,8 @@ export function createDefaultConfig() {
     ai_suggestions: false,
     default_delete_source: false,
     mediaservers: [],
+    downloaders: [],
+    delete_seed_tasks: false,
     library_names: [],
     cleanup_libraries: [],
     cleanup_operator: 'and',

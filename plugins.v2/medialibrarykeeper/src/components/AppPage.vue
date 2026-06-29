@@ -66,6 +66,7 @@ const status = ref({
   history: [],
   capabilities: {},
   media_server_options: [],
+  downloader_options: [],
 })
 
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
@@ -77,6 +78,7 @@ const pendingPlan = computed(() => status.value.pending_plan)
 const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
+const downloaderOptions = computed(() => status.value.downloader_options || [])
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
 
 function resolveImageUrl(url) {
@@ -682,6 +684,16 @@ onMounted(() => {
               hint="留空表示扫描所有 Emby 媒体服务器。"
               persistent-hint
             />
+            <VSelect
+              v-model="configDraft.downloaders"
+              label="下载器"
+              :items="downloaderOptions"
+              multiple
+              chips
+              clearable
+              hint="仅列出 MoviePilot 中已启用的 QB / Transmission；留空表示全部支持的下载器。"
+              persistent-hint
+            />
             <div class="mlk-form-grid">
               <VTextField v-model.number="configDraft.disk_warning_free_gb" type="number" min="0" label="剩余容量阈值 GB" />
               <VTextField v-model.number="configDraft.disk_warning_free_percent" type="number" min="0" label="剩余比例阈值 %" />
@@ -701,6 +713,7 @@ onMounted(() => {
             <div class="mlk-switch-grid">
               <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
               <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
+              <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
             </div>
             <VDivider />
             <div class="text-subtitle-1 font-weight-medium">清理计划配置</div>
