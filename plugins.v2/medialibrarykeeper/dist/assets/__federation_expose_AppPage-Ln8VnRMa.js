@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-DyyhTBXD.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-0rH5obXg.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,vShow:_vShow,withDirectives:_withDirectives,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps} = await importShared('vue');
 
@@ -559,12 +559,51 @@ function loadCachedStatus() {
 
 function applyStatus(data, options = {}) {
   if (!data) return
-  status.value = data;
+  const normalized = filterCleanedMediaFromStatus(data);
+  status.value = normalized.status;
+  if (normalized.removedIds.size) {
+    selectedMedia.value = selectedMedia.value.filter(item => !normalized.removedIds.has(item.id));
+  }
   configDraft.value = toEditableConfig(status.value.config);
   deleteSource.value = Boolean(configDraft.value.default_delete_source);
   if (options.persist !== false) {
-    writeStatusCache(props.pluginId, data);
+    writeStatusCache(props.pluginId, status.value);
   }
+}
+
+function filterCleanedMediaFromStatus(data) {
+  const removedIds = cleanedMediaIdsFromHistory(data.history || []);
+  if (!removedIds.size) return { status: data, removedIds }
+  const keepMedia = item => !removedIds.has(item.id);
+  return {
+    status: {
+      ...data,
+      media: (data.media || []).filter(keepMedia),
+      recommendations: (data.recommendations || []).filter(keepMedia),
+      pending_plan: data.pending_plan
+        ? {
+            ...data.pending_plan,
+            items: (data.pending_plan.items || []).filter(item => !removedIds.has(item.media_id)),
+          }
+        : data.pending_plan,
+    },
+    removedIds,
+  }
+}
+
+function cleanedMediaIdsFromHistory(history) {
+  const removedIds = new Set();
+  for (const record of history || []) {
+    const failedIds = new Set((record.failed_targets || [])
+      .filter(target => target.kind === 'dest' && target.media_id)
+      .map(target => target.media_id));
+    for (const target of record.deleted_targets || []) {
+      if (target.kind === 'dest' && target.media_id && !failedIds.has(target.media_id)) {
+        removedIds.add(target.media_id);
+      }
+    }
+  }
+  return removedIds
 }
 
 async function saveConfig() {
@@ -2727,6 +2766,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-789df39b"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-4292687c"]]);
 
 export { AppPage as default };
