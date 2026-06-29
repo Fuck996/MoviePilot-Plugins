@@ -1,6 +1,7 @@
 <script setup>
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import {
+  createDefaultCleanupRule,
   createDefaultConfig,
   formatBytes,
   formatNumber,
@@ -90,12 +91,24 @@ const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => su
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
-const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.title, value: item.title })))
+const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
+const librarySwitchOptions = computed(() => [
+  { title: '全部媒体库', value: '' },
+  ...libraryOptions.value,
+])
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
   { title: '最后观看日期', value: 'last_watched_at' },
   { title: '大小', value: 'size' },
   { title: '评分', value: 'rating' },
+]
+const scanCronOptions = [
+  { title: '每 1 小时', value: '0 */1 * * *' },
+  { title: '每 3 小时', value: '0 */3 * * *' },
+  { title: '每 6 小时', value: '0 */6 * * *' },
+  { title: '每 12 小时', value: '0 */12 * * *' },
+  { title: '每天 03:00', value: '0 3 * * *' },
+  { title: '每周一 03:00', value: '0 3 * * 1' },
 ]
 const cleanupWatchStateOptions = [
   { title: '不限制', value: 'any' },
@@ -198,8 +211,17 @@ function openLibrary(library) {
   activeTab.value = 'library'
 }
 
-function clearLibraryFilter() {
-  selectedLibraryId.value = ''
+function addCleanupRule() {
+  configDraft.value.cleanup_rules = [
+    ...(configDraft.value.cleanup_rules || []),
+    createDefaultCleanupRule(),
+  ]
+}
+
+function removeCleanupRule(index) {
+  const rules = [...(configDraft.value.cleanup_rules || [])]
+  rules.splice(index, 1)
+  configDraft.value.cleanup_rules = rules.length ? rules : [createDefaultCleanupRule()]
 }
 
 function openMediaDetail(item) {
@@ -478,6 +500,7 @@ onMounted(() => {
         <VWindowItem value="library">
           <div class="mlk-section">
             <div class="mlk-toolbar">
+              <VSelect v-model="selectedLibraryId" label="媒体库" :items="librarySwitchOptions" density="comfortable" hide-details />
               <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
               <VSelect v-model="watchFilter" label="观看状态" :items="['全部', '已看完', '未看完']" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
@@ -486,25 +509,6 @@ onMounted(() => {
               <VBtn :prepend-icon="sortDesc ? 'mdi-sort-descending' : 'mdi-sort-ascending'" variant="tonal" @click="sortDesc = !sortDesc">
                 {{ sortDesc ? '降序' : '升序' }}
               </VBtn>
-            </div>
-
-            <div class="mlk-filter-row">
-              <VChip
-                :color="!selectedLibraryId ? 'primary' : undefined"
-                :variant="!selectedLibraryId ? 'flat' : 'tonal'"
-                @click="clearLibraryFilter"
-              >
-                全部媒体库
-              </VChip>
-              <VChip
-                v-for="library in libraryCards"
-                :key="library.id"
-                :color="selectedLibraryId === library.id ? 'primary' : undefined"
-                :variant="selectedLibraryId === library.id ? 'flat' : 'tonal'"
-                @click="openLibrary(library)"
-              >
-                {{ library.title }}
-              </VChip>
             </div>
 
             <VAlert v-if="selectedLibrary" type="info" variant="tonal" density="compact">
@@ -668,85 +672,116 @@ onMounted(() => {
 
         <VWindowItem value="settings">
           <div class="mlk-section mlk-settings">
-            <div class="mlk-switch-grid">
-              <VSwitch v-model="configDraft.enabled" color="primary" inset label="启用插件" />
-              <VSwitch v-model="configDraft.show_sidebar_nav" color="primary" inset label="显示侧边栏入口" />
-              <VSwitch v-model="configDraft.notify_enabled" color="primary" inset label="启用通知" />
-              <VSwitch v-model="configDraft.disk_warning_enabled" color="warning" inset label="启用磁盘容量告警" />
+            <div class="mlk-settings-group">
+              <div class="text-subtitle-1 font-weight-medium">基础配置</div>
+              <div class="mlk-switch-grid">
+                <VSwitch v-model="configDraft.enabled" color="primary" inset label="启用插件" />
+                <VSwitch v-model="configDraft.show_sidebar_nav" color="primary" inset label="显示侧边栏入口" />
+                <VSwitch v-model="configDraft.notify_enabled" color="primary" inset label="启用通知" />
+                <VSwitch v-model="configDraft.disk_warning_enabled" color="warning" inset label="启用磁盘容量告警" />
+              </div>
+              <div class="mlk-form-grid">
+                <VSelect
+                  v-model="configDraft.mediaservers"
+                  label="媒体服务器"
+                  :items="mediaServerOptions"
+                  multiple
+                  chips
+                  clearable
+                  hint="留空表示扫描所有 Emby 媒体服务器。"
+                  persistent-hint
+                />
+                <VSelect
+                  v-model="configDraft.downloaders"
+                  label="下载器"
+                  :items="downloaderOptions"
+                  multiple
+                  chips
+                  clearable
+                  hint="留空表示全部支持的下载器。"
+                  persistent-hint
+                />
+              </div>
             </div>
-            <VSelect
-              v-model="configDraft.mediaservers"
-              label="媒体服务器"
-              :items="mediaServerOptions"
-              multiple
-              chips
-              clearable
-              hint="留空表示扫描所有 Emby 媒体服务器。"
-              persistent-hint
-            />
-            <VSelect
-              v-model="configDraft.downloaders"
-              label="下载器"
-              :items="downloaderOptions"
-              multiple
-              chips
-              clearable
-              hint="仅列出 MoviePilot 中已启用的 QB / Transmission；留空表示全部支持的下载器。"
-              persistent-hint
-            />
-            <div class="mlk-form-grid">
-              <VTextField v-model.number="configDraft.disk_warning_free_gb" type="number" min="0" label="剩余容量阈值 GB" />
-              <VTextField v-model.number="configDraft.disk_warning_free_percent" type="number" min="0" label="剩余比例阈值 %" />
-              <VTextField v-model="configDraft.scan_cron" label="扫描周期 Cron" />
+
+            <div class="mlk-settings-group">
+              <div class="text-subtitle-1 font-weight-medium">扫描与容量告警</div>
+              <div class="mlk-form-grid">
+                <VSelect v-model="configDraft.scan_cron" label="扫描周期" :items="scanCronOptions" />
+                <VTextField v-model.number="configDraft.disk_warning_free_gb" type="number" min="0" label="剩余容量低于 GB" />
+                <VTextField v-model.number="configDraft.disk_warning_free_percent" type="number" min="0" label="剩余比例低于 %" />
+              </div>
+              <VAlert type="info" variant="tonal" density="comfortable">
+                磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘。
+              </VAlert>
             </div>
-            <VTextarea
-              v-model="configDraft.library_names"
-              label="限定媒体库名称"
-              hint="每行一个媒体库名称，留空表示全部媒体库。"
-              persistent-hint
-              auto-grow
-              rows="3"
-            />
-            <VAlert type="info" variant="tonal" density="comfortable">
-              磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。
-            </VAlert>
-            <div class="mlk-switch-grid">
-              <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
-              <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
-              <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
+
+            <div class="mlk-settings-group">
+              <div class="text-subtitle-1 font-weight-medium">删除行为</div>
+              <div class="mlk-switch-grid">
+                <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
+                <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
+                <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
+              </div>
             </div>
+
             <VDivider />
-            <div class="text-subtitle-1 font-weight-medium">清理计划配置</div>
-            <VSelect
-              v-model="configDraft.cleanup_libraries"
-              label="清理媒体库"
-              :items="libraryOptions"
-              multiple
-              chips
-              clearable
-              hint="选择要参与定时清理计划的媒体库，留空表示全部媒体库。"
-              persistent-hint
-            />
-            <div class="mlk-form-grid">
+
+            <div class="mlk-settings-group">
+              <div class="mlk-section-header">
+                <div>
+                  <div class="text-subtitle-1 font-weight-medium">清理计划</div>
+                  <div class="text-caption text-medium-emphasis">先限定参与计划的媒体库，再配置多条条件组合；任意一组命中即进入待清理批次。</div>
+                </div>
+                <VBtn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addCleanupRule">
+                  添加组合
+                </VBtn>
+              </div>
               <VSelect
-                v-model="configDraft.cleanup_operator"
-                label="条件关系"
-                :items="[
-                  { title: '全部满足', value: 'and' },
-                  { title: '任一满足', value: 'or' },
-                ]"
-              />
-              <VSelect
-                v-model="configDraft.cleanup_watch_state"
-                label="观看状态"
-                :items="cleanupWatchStateOptions"
-                hint="不限制表示不启用该条件"
+                v-model="configDraft.cleanup_libraries"
+                label="清理媒体库"
+                :items="libraryOptions"
+                multiple
+                chips
+                clearable
+                hint="留空表示全部媒体库。"
                 persistent-hint
               />
-              <VTextField v-model.number="configDraft.cleanup_unwatched_days" type="number" min="0" label="超过多少天未观看" hint="0 表示不启用" persistent-hint />
-              <VTextField v-model.number="configDraft.cleanup_min_size_gb" type="number" min="0" label="大小超过 GB" hint="0 表示不启用" persistent-hint />
-              <VTextField v-model.number="configDraft.cleanup_max_rating" type="number" min="0" step="0.1" label="评分低于/等于" hint="0 表示不启用" persistent-hint />
+              <VSheet
+                v-for="(rule, index) in configDraft.cleanup_rules"
+                :key="rule.id || index"
+                border
+                rounded
+                class="mlk-rule-row"
+              >
+                <div class="mlk-rule-title">组合 {{ index + 1 }}</div>
+                <div class="mlk-rule-grid">
+                  <VSelect
+                    v-model="rule.operator"
+                    label="组内关系"
+                    :items="[
+                      { title: '全部满足', value: 'and' },
+                      { title: '任一满足', value: 'or' },
+                    ]"
+                    density="comfortable"
+                    hide-details
+                  />
+                  <VSelect
+                    v-model="rule.watch_state"
+                    label="观看状态"
+                    :items="cleanupWatchStateOptions"
+                    density="comfortable"
+                    hide-details
+                  />
+                  <VTextField v-model.number="rule.unwatched_days" type="number" min="0" label="未观看天数" density="comfortable" hide-details />
+                  <VTextField v-model.number="rule.min_size_gb" type="number" min="0" label="大于 GB" density="comfortable" hide-details />
+                  <VTextField v-model.number="rule.max_rating" type="number" min="0" step="0.1" label="评分低于/等于" density="comfortable" hide-details />
+                  <VBtn icon="mdi-delete-outline" color="error" variant="text" :disabled="configDraft.cleanup_rules.length <= 1" @click="removeCleanupRule(index)" />
+                </div>
+              </VSheet>
+              <div class="text-caption text-medium-emphasis">数字条件填 0 表示不启用；每条组合至少启用一个条件才会生效。</div>
             </div>
+
             <div class="mlk-settings-actions">
               <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
                 保存设置
@@ -877,12 +912,12 @@ onMounted(() => {
 .mlk-toolbar,
 .mlk-plan-bar,
 .mlk-plan-title,
+.mlk-section-header,
 .mlk-danger-actions,
 .mlk-disk-row,
 .mlk-detail-head,
 .mlk-detail-actions,
 .mlk-chip-row,
-.mlk-filter-row,
 .mlk-settings-actions {
   display: flex;
   align-items: center;
@@ -891,8 +926,7 @@ onMounted(() => {
 
 .mlk-header,
 .mlk-toolbar,
-.mlk-plan-bar,
-.mlk-filter-row {
+.mlk-plan-bar {
   flex-wrap: wrap;
 }
 
@@ -1024,7 +1058,36 @@ onMounted(() => {
 }
 
 .mlk-settings {
-  max-width: 960px;
+  max-width: 1200px;
+}
+
+.mlk-settings-group,
+.mlk-rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mlk-section-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.mlk-rule-row {
+  padding: 14px;
+}
+
+.mlk-rule-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
+.mlk-rule-grid {
+  display: grid;
+  grid-template-columns: minmax(132px, 0.9fr) minmax(132px, 0.9fr) minmax(126px, 0.8fr) minmax(112px, 0.7fr) minmax(140px, 0.9fr) 44px;
+  gap: 10px;
+  align-items: start;
 }
 
 .mlk-settings-actions {
@@ -1079,6 +1142,18 @@ onMounted(() => {
   .mlk-header > .v-btn,
   .mlk-plan-bar > .v-btn {
     width: 100%;
+  }
+
+  .mlk-section-header {
+    flex-direction: column;
+  }
+
+  .mlk-section-header > .v-btn {
+    width: 100%;
+  }
+
+  .mlk-rule-grid {
+    grid-template-columns: 1fr;
   }
 
   .mlk-detail-layout {

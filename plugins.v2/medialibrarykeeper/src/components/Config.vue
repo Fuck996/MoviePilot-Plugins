@@ -61,7 +61,6 @@ onMounted(async () => {
       <VSwitch v-model="config.enabled" color="primary" inset label="启用插件" />
       <VSwitch v-model="config.show_sidebar_nav" color="primary" inset label="显示侧边栏入口" />
       <VSwitch v-model="config.notify_enabled" color="primary" inset label="启用通知" />
-      <VSwitch v-model="config.disk_warning_enabled" color="warning" inset label="启用磁盘容量告警" />
       <VSelect
         v-model="config.mediaservers"
         label="媒体服务器"
@@ -86,22 +85,6 @@ onMounted(async () => {
         hint="自动读取 MoviePilot 已启用的 QB / Transmission；留空表示全部支持的下载器。"
         persistent-hint
       />
-      <div class="mlk-config-grid">
-        <VTextField v-model.number="config.disk_warning_free_gb" type="number" min="0" label="剩余容量阈值 GB" />
-        <VTextField v-model.number="config.disk_warning_free_percent" type="number" min="0" label="剩余比例阈值 %" />
-        <VTextField v-model="config.scan_cron" label="扫描周期 Cron" />
-      </div>
-      <VTextarea
-        v-model="config.library_names"
-        label="限定媒体库名称"
-        hint="每行一个媒体库名称，留空表示全部媒体库。"
-        persistent-hint
-        auto-grow
-        rows="3"
-      />
-      <VAlert type="info" variant="tonal" density="comfortable">
-        磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。
-      </VAlert>
       <VSwitch v-model="config.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
       <VSwitch v-model="config.default_delete_source" color="error" inset label="默认同时删除源文件" />
       <VSwitch v-model="config.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
@@ -117,9 +100,4 @@ onMounted(async () => {
   padding: 16px;
 }
 
-.mlk-config-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
 </style>

@@ -5,6 +5,17 @@ function unwrapResponse(response) {
   return response?.data ?? response
 }
 
+function createDefaultCleanupRule() {
+  return {
+    id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    operator: 'and',
+    watch_state: 'any',
+    unwatched_days: 0,
+    min_size_gb: 0,
+    max_rating: 0,
+  }
+}
+
 function createDefaultConfig() {
   return {
     enabled: false,
@@ -21,6 +32,7 @@ function createDefaultConfig() {
     delete_seed_tasks: false,
     library_names: [],
     cleanup_libraries: [],
+    cleanup_rules: [createDefaultCleanupRule()],
     cleanup_operator: 'and',
     cleanup_watch_state: 'any',
     cleanup_unwatched_days: 0,
@@ -54,34 +66,56 @@ function writeStatusCache(pluginId, status) {
 
 function cloneConfig(config) {
   const cloned = JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }));
-  if (!['any', 'watched', 'unwatched'].includes(cloned.cleanup_watch_state)) {
-    cloned.cleanup_watch_state = cloned.cleanup_watched ? 'watched' : 'any';
-  }
-  cloned.cleanup_watched = cloned.cleanup_watch_state === 'watched';
+  cloned.library_names = [];
+  cloned.cleanup_rules = normalizeCleanupRules(config || {}, cloned);
+  const firstRule = cloned.cleanup_rules[0] || createDefaultCleanupRule();
+  cloned.cleanup_operator = firstRule.operator;
+  cloned.cleanup_watch_state = firstRule.watch_state;
+  cloned.cleanup_unwatched_days = firstRule.unwatched_days;
+  cloned.cleanup_min_size_gb = firstRule.min_size_gb;
+  cloned.cleanup_max_rating = firstRule.max_rating;
+  cloned.cleanup_watched = firstRule.watch_state === 'watched';
   return cloned
+}
+
+function normalizeCleanupRules(sourceConfig, mergedConfig) {
+  const rawRules = Array.isArray(sourceConfig.cleanup_rules) ? sourceConfig.cleanup_rules : [];
+  const rules = rawRules.length
+    ? rawRules
+    : [{
+        operator: mergedConfig.cleanup_operator,
+        watch_state: sourceConfig.cleanup_watch_state ?? (mergedConfig.cleanup_watched ? 'watched' : mergedConfig.cleanup_watch_state),
+        watched: mergedConfig.cleanup_watched,
+        unwatched_days: mergedConfig.cleanup_unwatched_days,
+        min_size_gb: mergedConfig.cleanup_min_size_gb,
+        max_rating: mergedConfig.cleanup_max_rating,
+      }];
+  return rules.map(normalizeCleanupRule)
+}
+
+function normalizeCleanupRule(rule) {
+  const normalized = { ...createDefaultCleanupRule(), ...(rule || {}) };
+  if (!['and', 'or'].includes(normalized.operator)) {
+    normalized.operator = 'and';
+  }
+  if (!['any', 'watched', 'unwatched'].includes(normalized.watch_state)) {
+    normalized.watch_state = normalized.watched ? 'watched' : 'any';
+  }
+  normalized.unwatched_days = Math.max(Number(normalized.unwatched_days || 0), 0);
+  normalized.min_size_gb = Math.max(Number(normalized.min_size_gb || 0), 0);
+  normalized.max_rating = Math.max(Number(normalized.max_rating || 0), 0);
+  return normalized
 }
 
 function toEditableConfig(config) {
   const cloned = cloneConfig(config);
-  for (const key of ['library_names']) {
-    if (Array.isArray(cloned[key])) {
-      cloned[key] = cloned[key].join('\n');
-    }
-  }
   return cloned
 }
 
 function toPayloadConfig(config) {
   const cloned = cloneConfig(config);
   cloned.cleanup_watched = cloned.cleanup_watch_state === 'watched';
-  for (const key of ['library_names']) {
-    if (typeof cloned[key] === 'string') {
-      cloned[key] = cloned[key]
-        .split('\n')
-        .map(item => item.trim())
-        .filter(Boolean);
-    }
-  }
+  cloned.library_names = [];
   return cloned
 }
 
@@ -121,4 +155,4 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, createDefaultConfig as c, formatNumber as f, planItemFromMedia as p, readStatusCache as r, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };
+export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, createDefaultConfig as c, createDefaultCleanupRule as d, formatNumber as f, planItemFromMedia as p, readStatusCache as r, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };

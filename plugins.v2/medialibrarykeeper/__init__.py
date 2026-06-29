@@ -37,7 +37,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.10"
+    plugin_version = "0.3.11"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -433,6 +433,7 @@ class MediaLibraryKeeper(_PluginBase):
             "delete_seed_tasks": False,
             "library_names": [],
             "cleanup_libraries": [],
+            "cleanup_rules": [MediaLibraryKeeper._default_cleanup_rule()],
             "cleanup_operator": "and",
             "cleanup_watch_state": "any",
             "cleanup_unwatched_days": 0,
@@ -445,25 +446,63 @@ class MediaLibraryKeeper(_PluginBase):
     def _normalize_config(cls, config: Dict[str, Any]) -> Dict[str, Any]:
         defaults = cls._default_config()
         normalized = {**defaults, **(config or {})}
+        raw_config = config or {}
         for key in ["enabled", "show_sidebar_nav", "notify_enabled", "disk_warning_enabled", "ai_suggestions", "default_delete_source", "delete_seed_tasks"]:
             normalized[key] = cls._to_bool(normalized.get(key, defaults[key]))
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
         normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
-        normalized["cleanup_operator"] = cls._clean_text(normalized.get("cleanup_operator")).lower()
-        if normalized["cleanup_operator"] not in {"and", "or"}:
-            normalized["cleanup_operator"] = "and"
-        raw_config = config or {}
-        watch_state = cls._clean_text(raw_config.get("cleanup_watch_state")).lower()
-        if watch_state not in {"any", "watched", "unwatched"}:
-            watch_state = "watched" if cls._to_bool(raw_config.get("cleanup_watched")) else "any"
-        normalized["cleanup_watch_state"] = watch_state
-        normalized["cleanup_watched"] = watch_state == "watched"
-        normalized["cleanup_unwatched_days"] = max(cls._to_int(normalized.get("cleanup_unwatched_days"), 0), 0)
-        normalized["cleanup_min_size_gb"] = max(cls._to_int(normalized.get("cleanup_min_size_gb"), 0), 0)
-        normalized["cleanup_max_rating"] = max(cls._to_float(normalized.get("cleanup_max_rating"), 0), 0)
-        for key in ["mediaservers", "downloaders", "library_names", "cleanup_libraries"]:
+        for key in ["mediaservers", "downloaders", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
+        normalized["library_names"] = []
+        normalized["cleanup_rules"] = cls._normalize_cleanup_rules(raw_config)
+        first_rule = normalized["cleanup_rules"][0] if normalized["cleanup_rules"] else cls._default_cleanup_rule()
+        normalized["cleanup_operator"] = first_rule["operator"]
+        normalized["cleanup_watch_state"] = first_rule["watch_state"]
+        normalized["cleanup_watched"] = first_rule["watch_state"] == "watched"
+        normalized["cleanup_unwatched_days"] = first_rule["unwatched_days"]
+        normalized["cleanup_min_size_gb"] = first_rule["min_size_gb"]
+        normalized["cleanup_max_rating"] = first_rule["max_rating"]
+        return normalized
+
+    @staticmethod
+    def _default_cleanup_rule() -> Dict[str, Any]:
+        return {
+            "operator": "and",
+            "watch_state": "any",
+            "unwatched_days": 0,
+            "min_size_gb": 0,
+            "max_rating": 0,
+        }
+
+    @classmethod
+    def _normalize_cleanup_rules(cls, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw_rules = config.get("cleanup_rules")
+        if isinstance(raw_rules, list) and raw_rules:
+            rules = raw_rules
+        else:
+            rules = [{
+                "operator": config.get("cleanup_operator"),
+                "watch_state": config.get("cleanup_watch_state"),
+                "watched": config.get("cleanup_watched"),
+                "unwatched_days": config.get("cleanup_unwatched_days"),
+                "min_size_gb": config.get("cleanup_min_size_gb"),
+                "max_rating": config.get("cleanup_max_rating"),
+            }]
+        return [cls._normalize_cleanup_rule(rule) for rule in rules if isinstance(rule, dict)]
+
+    @classmethod
+    def _normalize_cleanup_rule(cls, rule: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = {**cls._default_cleanup_rule(), **(rule or {})}
+        operator = cls._clean_text(normalized.get("operator")).lower()
+        normalized["operator"] = operator if operator in {"and", "or"} else "and"
+        watch_state = cls._clean_text(normalized.get("watch_state")).lower()
+        if watch_state not in {"any", "watched", "unwatched"}:
+            watch_state = "watched" if cls._to_bool(normalized.get("watched")) else "any"
+        normalized["watch_state"] = watch_state
+        normalized["unwatched_days"] = max(cls._to_int(normalized.get("unwatched_days"), 0), 0)
+        normalized["min_size_gb"] = max(cls._to_int(normalized.get("min_size_gb"), 0), 0)
+        normalized["max_rating"] = max(cls._to_float(normalized.get("max_rating"), 0), 0)
         return normalized
 
     @staticmethod
@@ -751,11 +790,7 @@ class MediaLibraryKeeper(_PluginBase):
         return self._accept_library_name(item.get("library"))
 
     def _accept_library_name(self, library_name: Any) -> bool:
-        library_names = self._config.get("library_names") or []
-        if not library_names:
-            return True
-        library = self._clean_text(library_name)
-        return any(name == library for name in library_names)
+        return True
 
     def _build_image_url(self, item: Dict[str, Any], server_name: str, max_height: int = 500, max_width: int = 340) -> str:
         if not (item.get("ImageTags") or {}).get("Primary"):
@@ -939,35 +974,34 @@ class MediaLibraryKeeper(_PluginBase):
         return bool(values & filters)
 
     def _matches_cleanup_conditions(self, item: Dict[str, Any]) -> bool:
+        rules = self._config.get("cleanup_rules") or []
+        return any(self._matches_cleanup_rule(item, rule) for rule in rules)
+
+    def _matches_cleanup_rule(self, item: Dict[str, Any], rule: Dict[str, Any]) -> bool:
         checks = []
-        watch_state = self._config.get("cleanup_watch_state")
+        watch_state = rule.get("watch_state")
         if watch_state == "watched":
             checks.append(bool(item.get("watched")))
         elif watch_state == "unwatched":
             checks.append(not bool(item.get("watched")))
-        days = int(self._config.get("cleanup_unwatched_days") or 0)
+        days = int(rule.get("unwatched_days") or 0)
         if days > 0:
             checks.append(self._inactive_days(item) >= days)
-        min_size = int(self._config.get("cleanup_min_size_gb") or 0)
+        min_size = int(rule.get("min_size_gb") or 0)
         if min_size > 0:
             checks.append(int(item.get("size") or 0) >= min_size * 1024 ** 3)
-        max_rating = float(self._config.get("cleanup_max_rating") or 0)
+        max_rating = float(rule.get("max_rating") or 0)
         if max_rating > 0:
             rating = self._to_float(item.get("rating"), 0)
             checks.append(rating > 0 and rating <= max_rating)
         if not checks:
             return False
-        return any(checks) if self._config.get("cleanup_operator") == "or" else all(checks)
+        return any(checks) if rule.get("operator") == "or" else all(checks)
 
     def _cleanup_criteria_summary(self) -> Dict[str, Any]:
         return {
             "libraries": self._config.get("cleanup_libraries") or [],
-            "operator": self._config.get("cleanup_operator"),
-            "watch_state": self._config.get("cleanup_watch_state"),
-            "unwatched_days": self._config.get("cleanup_unwatched_days"),
-            "watched": self._config.get("cleanup_watch_state") == "watched",
-            "min_size_gb": self._config.get("cleanup_min_size_gb"),
-            "max_rating": self._config.get("cleanup_max_rating"),
+            "rules": self._config.get("cleanup_rules") or [],
         }
 
     def _build_plan_item(self, media: Dict[str, Any], delete_source: bool) -> Dict[str, Any]:

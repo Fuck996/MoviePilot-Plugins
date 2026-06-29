@@ -1,12 +1,11 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper-C_HB7AJl.js';
+import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper-CQmFw3RA.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "mlk-config" };
 const _hoisted_2 = { class: "mlk-config-body" };
-const _hoisted_3 = { class: "mlk-config-grid" };
 
 const {computed,onMounted,ref} = await importShared('vue');
 
@@ -68,9 +67,6 @@ return (_ctx, _cache) => {
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VSelect = _resolveComponent("VSelect");
-  const _component_VTextField = _resolveComponent("VTextField");
-  const _component_VTextarea = _resolveComponent("VTextarea");
-  const _component_VAlert = _resolveComponent("VAlert");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createVNode(_component_VToolbar, {
@@ -78,7 +74,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "text-h6 ms-3" }, "媒体库管家配置", -1)),
+        _cache[9] || (_cache[9] = _createElementVNode("div", { class: "text-h6 ms-3" }, "媒体库管家配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -117,16 +113,9 @@ return (_ctx, _cache) => {
         inset: "",
         label: "启用通知"
       }, null, 8, ["modelValue"]),
-      _createVNode(_component_VSwitch, {
-        modelValue: config.value.disk_warning_enabled,
-        "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((config.value.disk_warning_enabled) = $event)),
-        color: "warning",
-        inset: "",
-        label: "启用磁盘容量告警"
-      }, null, 8, ["modelValue"]),
       _createVNode(_component_VSelect, {
         modelValue: config.value.mediaservers,
-        "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((config.value.mediaservers) = $event)),
+        "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((config.value.mediaservers) = $event)),
         label: "媒体服务器",
         items: mediaServerOptions.value,
         multiple: "",
@@ -139,7 +128,7 @@ return (_ctx, _cache) => {
       }, null, 8, ["modelValue", "items", "loading", "disabled"]),
       _createVNode(_component_VSelect, {
         modelValue: config.value.downloaders,
-        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((config.value.downloaders) = $event)),
+        "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((config.value.downloaders) = $event)),
         label: "下载器",
         items: downloaderOptions.value,
         multiple: "",
@@ -150,51 +139,9 @@ return (_ctx, _cache) => {
         hint: "自动读取 MoviePilot 已启用的 QB / Transmission；留空表示全部支持的下载器。",
         "persistent-hint": ""
       }, null, 8, ["modelValue", "items", "loading", "disabled"]),
-      _createElementVNode("div", _hoisted_3, [
-        _createVNode(_component_VTextField, {
-          modelValue: config.value.disk_warning_free_gb,
-          "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((config.value.disk_warning_free_gb) = $event)),
-          modelModifiers: { number: true },
-          type: "number",
-          min: "0",
-          label: "剩余容量阈值 GB"
-        }, null, 8, ["modelValue"]),
-        _createVNode(_component_VTextField, {
-          modelValue: config.value.disk_warning_free_percent,
-          "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((config.value.disk_warning_free_percent) = $event)),
-          modelModifiers: { number: true },
-          type: "number",
-          min: "0",
-          label: "剩余比例阈值 %"
-        }, null, 8, ["modelValue"]),
-        _createVNode(_component_VTextField, {
-          modelValue: config.value.scan_cron,
-          "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((config.value.scan_cron) = $event)),
-          label: "扫描周期 Cron"
-        }, null, 8, ["modelValue"])
-      ]),
-      _createVNode(_component_VTextarea, {
-        modelValue: config.value.library_names,
-        "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((config.value.library_names) = $event)),
-        label: "限定媒体库名称",
-        hint: "每行一个媒体库名称，留空表示全部媒体库。",
-        "persistent-hint": "",
-        "auto-grow": "",
-        rows: "3"
-      }, null, 8, ["modelValue"]),
-      _createVNode(_component_VAlert, {
-        type: "info",
-        variant: "tonal",
-        density: "comfortable"
-      }, {
-        default: _withCtx(() => [...(_cache[15] || (_cache[15] = [
-          _createTextVNode(" 磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘，无需手动配置路径。 ", -1)
-        ]))]),
-        _: 1
-      }),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.ai_suggestions,
-        "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((config.value.ai_suggestions) = $event)),
+        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((config.value.ai_suggestions) = $event)),
         color: "primary",
         inset: "",
         label: "允许 AI 参与清理建议排序",
@@ -202,14 +149,14 @@ return (_ctx, _cache) => {
       }, null, 8, ["modelValue"]),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.default_delete_source,
-        "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((config.value.default_delete_source) = $event)),
+        "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((config.value.default_delete_source) = $event)),
         color: "error",
         inset: "",
         label: "默认同时删除源文件"
       }, null, 8, ["modelValue"]),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.delete_seed_tasks,
-        "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((config.value.delete_seed_tasks) = $event)),
+        "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((config.value.delete_seed_tasks) = $event)),
         color: "warning",
         inset: "",
         label: "删除资源时同步删除保种任务"
@@ -220,6 +167,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-cddb03a4"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-01416085"]]);
 
 export { Config as default };
