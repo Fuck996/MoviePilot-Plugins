@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.16"
+    plugin_version = "0.3.17"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -580,6 +580,16 @@ class MediaLibraryKeeper(_PluginBase):
             return True
         return cls._to_float(user_data.get("PlayedPercentage"), 0) >= 90
 
+    @classmethod
+    def _has_play_activity_user_data(cls, user_data: Dict[str, Any]) -> bool:
+        if cls._is_played_user_data(user_data):
+            return True
+        if not isinstance(user_data, dict):
+            return False
+        if cls._to_int(user_data.get("PlaybackPositionTicks"), 0) > 0:
+            return True
+        return cls._to_float(user_data.get("PlayedPercentage"), 0) > 0
+
     @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
         try:
@@ -721,6 +731,7 @@ class MediaLibraryKeeper(_PluginBase):
                     if stats:
                         normalized["total_episodes"] = stats["total_episodes"] or normalized.get("total_episodes", 0)
                         normalized["watched_episodes"] = stats["watched_episodes"]
+                        normalized["started_episodes"] = stats.get("started_episodes", normalized["watched_episodes"])
                         normalized["size"] = stats["size"] or normalized.get("size", 0)
                         normalized["episode_paths"] = stats["paths"]
                         normalized["last_episode_added_at"] = stats.get("last_episode_added_at") or normalized.get("last_episode_added_at", "")
@@ -728,6 +739,13 @@ class MediaLibraryKeeper(_PluginBase):
                         normalized["watched"] = (
                             normalized["total_episodes"] > 0
                             and normalized["watched_episodes"] >= normalized["total_episodes"]
+                        )
+                        normalized["watch_state"] = self._watch_state(
+                            normalized["watched_episodes"],
+                            normalized["total_episodes"],
+                            True,
+                            normalized["watched"],
+                            normalized.get("started_episodes", 0),
                         )
                         normalized["progress"] = self._progress_text(
                             normalized["watched_episodes"],
@@ -757,6 +775,7 @@ class MediaLibraryKeeper(_PluginBase):
             return {}
         total = 0
         watched = 0
+        started = 0
         size = 0
         paths = []
         start = 0
@@ -779,6 +798,8 @@ class MediaLibraryKeeper(_PluginBase):
                 user_data = episode.get("UserData") or {}
                 if self._is_played_user_data(user_data):
                     watched += 1
+                if self._has_play_activity_user_data(user_data):
+                    started += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
                 path = self._clean_text(episode.get("Path"))
@@ -791,6 +812,7 @@ class MediaLibraryKeeper(_PluginBase):
         return {
             "total_episodes": total,
             "watched_episodes": watched,
+            "started_episodes": started,
             "size": size,
             "paths": paths,
             "last_episode_added_at": last_episode_added_at,
@@ -838,6 +860,8 @@ class MediaLibraryKeeper(_PluginBase):
         else:
             watched_episodes = 1 if played else 0
         watched = played or (is_series and total_episodes > 0 and watched_episodes >= total_episodes)
+        started_episodes = watched_episodes if is_series else (1 if self._has_play_activity_user_data(user_data) else 0)
+        watch_state = self._watch_state(watched_episodes, total_episodes, is_series, watched, started_episodes)
         path = self._clean_text(item.get("Path"))
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         added_at = self._format_emby_date(item.get("DateCreated"))
@@ -867,8 +891,10 @@ class MediaLibraryKeeper(_PluginBase):
             "last_episode_added_at": added_at,
             "last_watched_at": last_watched_at,
             "watched": watched,
+            "watch_state": watch_state,
             "progress": self._progress_text(watched_episodes, total_episodes, is_series, watched),
             "watched_episodes": watched_episodes,
+            "started_episodes": started_episodes,
             "total_episodes": total_episodes,
             "size": self._media_sources_size(item.get("MediaSources") or []),
             "episode_paths": [],
@@ -975,6 +1001,20 @@ class MediaLibraryKeeper(_PluginBase):
         if is_series:
             return f"{watched_episodes}/{total_episodes}" if total_episodes else "0/0"
         return "已观看" if watched else "未观看"
+
+    @staticmethod
+    def _watch_state(
+        watched_episodes: int,
+        total_episodes: int,
+        is_series: bool,
+        watched: bool,
+        started_episodes: int = 0,
+    ) -> str:
+        if watched:
+            return "watched"
+        if is_series:
+            return "watching" if watched_episodes > 0 or started_episodes > 0 else "unwatched"
+        return "watching" if started_episodes > 0 else "unwatched"
 
     def _dedupe_media(self, media: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         deduped = {}
@@ -1140,6 +1180,7 @@ class MediaLibraryKeeper(_PluginBase):
             "type": media.get("type"),
             "type_label": media.get("type_label"),
             "watched": bool(media.get("watched")),
+            "watch_state": media.get("watch_state"),
             "size": self._sum_target_size(delete_targets) or int(media.get("size") or 0),
             "library": media.get("library"),
             "rating": media.get("rating"),

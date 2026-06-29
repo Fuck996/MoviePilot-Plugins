@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-Dy650yl2.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-DzKygjQu.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps,vShow:_vShow,withDirectives:_withDirectives} = await importShared('vue');
 
@@ -252,6 +252,7 @@ const scanCronOptions = [
   { title: '每天 03:00', value: '0 3 * * *' },
   { title: '每周一 03:00', value: '0 3 * * 1' },
 ];
+const mediaWatchFilterOptions = ['全部', '已看完', '观看中', '未观看'];
 const cleanupWatchStateOptions = [
   { title: '不限制', value: 'any' },
   { title: '已看完', value: 'watched' },
@@ -269,8 +270,10 @@ const filteredMediaRows = computed(() => {
     }
     if (typeFilter.value === '电影' && item.type !== 'movie') return false
     if (typeFilter.value === '剧集' && item.type !== 'series') return false
-    if (watchFilter.value === '已看完' && !item.watched) return false
-    if (watchFilter.value === '未看完' && item.watched) return false
+    const watchState = resolveWatchState(item);
+    if (watchFilter.value === '已看完' && watchState !== 'watched') return false
+    if (watchFilter.value === '观看中' && watchState !== 'watching') return false
+    if (watchFilter.value === '未观看' && watchState !== 'unwatched') return false
     return true
   })
 });
@@ -338,6 +341,24 @@ function sortValue(item, key) {
   if (key === 'size') return Number(item.size || 0)
   if (key === 'rating') return Number(item.rating || 0)
   return String(item[key] || '')
+}
+
+function resolveWatchState(item) {
+  return item.watch_state || (item.watched ? 'watched' : 'unwatched')
+}
+
+function watchStateColor(item) {
+  const watchState = resolveWatchState(item);
+  if (watchState === 'watched') return 'success'
+  if (watchState === 'watching') return 'info'
+  return 'warning'
+}
+
+function watchStateText(item) {
+  const watchState = resolveWatchState(item);
+  if (watchState === 'watched') return item.type === 'series' ? `已看完 ${item.progress}` : '已看完'
+  if (watchState === 'watching') return item.type === 'series' ? `观看中 ${item.progress}` : '观看中'
+  return item.type === 'series' ? `未观看 ${item.progress}` : '未观看'
 }
 
 function toggleSelected(item) {
@@ -898,7 +919,7 @@ return (_ctx, _cache) => {
                       modelValue: watchFilter.value,
                       "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((watchFilter).value = $event)),
                       label: "观看状态",
-                      items: ['全部', '已看完', '未看完'],
+                      items: mediaWatchFilterOptions,
                       density: "comfortable",
                       "hide-details": ""
                     }, null, 8, ["modelValue"]),
@@ -998,11 +1019,11 @@ return (_ctx, _cache) => {
                                   }, 1024),
                                   _createVNode(_component_VChip, {
                                     size: "small",
-                                    color: item.watched ? 'success' : 'warning',
+                                    color: watchStateColor(item),
                                     variant: "tonal"
                                   }, {
                                     default: _withCtx(() => [
-                                      _createTextVNode(_toDisplayString(item.progress), 1)
+                                      _createTextVNode(_toDisplayString(watchStateText(item)), 1)
                                     ]),
                                     _: 2
                                   }, 1032, ["color"]),
@@ -1704,11 +1725,11 @@ return (_ctx, _cache) => {
                         _: 1
                       }),
                       _createVNode(_component_VChip, {
-                        color: selectedMediaDetail.value.watched ? 'success' : 'warning',
+                        color: watchStateColor(selectedMediaDetail.value),
                         variant: "tonal"
                       }, {
                         default: _withCtx(() => [
-                          _createTextVNode(_toDisplayString(selectedMediaDetail.value.progress), 1)
+                          _createTextVNode(_toDisplayString(watchStateText(selectedMediaDetail.value)), 1)
                         ]),
                         _: 1
                       }, 8, ["color"]),
@@ -2075,6 +2096,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-b49960f3"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d35bbe72"]]);
 
 export { AppPage as default };

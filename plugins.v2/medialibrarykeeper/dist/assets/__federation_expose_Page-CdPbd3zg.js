@@ -1,6 +1,6 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import AppPage from './__federation_expose_AppPage-mo4ZhmXG.js';
-import { _ as _export_sfc } from './_plugin-vue_export-helper-Dy650yl2.js';
+import AppPage from './__federation_expose_AppPage-DbiWL-Gl.js';
+import { _ as _export_sfc } from './_plugin-vue_export-helper-DzKygjQu.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 

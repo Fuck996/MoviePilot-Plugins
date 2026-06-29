@@ -135,6 +135,7 @@ const scanCronOptions = [
   { title: '每天 03:00', value: '0 3 * * *' },
   { title: '每周一 03:00', value: '0 3 * * 1' },
 ]
+const mediaWatchFilterOptions = ['全部', '已看完', '观看中', '未观看']
 const cleanupWatchStateOptions = [
   { title: '不限制', value: 'any' },
   { title: '已看完', value: 'watched' },
@@ -152,8 +153,10 @@ const filteredMediaRows = computed(() => {
     }
     if (typeFilter.value === '电影' && item.type !== 'movie') return false
     if (typeFilter.value === '剧集' && item.type !== 'series') return false
-    if (watchFilter.value === '已看完' && !item.watched) return false
-    if (watchFilter.value === '未看完' && item.watched) return false
+    const watchState = resolveWatchState(item)
+    if (watchFilter.value === '已看完' && watchState !== 'watched') return false
+    if (watchFilter.value === '观看中' && watchState !== 'watching') return false
+    if (watchFilter.value === '未观看' && watchState !== 'unwatched') return false
     return true
   })
 })
@@ -221,6 +224,24 @@ function sortValue(item, key) {
   if (key === 'size') return Number(item.size || 0)
   if (key === 'rating') return Number(item.rating || 0)
   return String(item[key] || '')
+}
+
+function resolveWatchState(item) {
+  return item.watch_state || (item.watched ? 'watched' : 'unwatched')
+}
+
+function watchStateColor(item) {
+  const watchState = resolveWatchState(item)
+  if (watchState === 'watched') return 'success'
+  if (watchState === 'watching') return 'info'
+  return 'warning'
+}
+
+function watchStateText(item) {
+  const watchState = resolveWatchState(item)
+  if (watchState === 'watched') return item.type === 'series' ? `已看完 ${item.progress}` : '已看完'
+  if (watchState === 'watching') return item.type === 'series' ? `观看中 ${item.progress}` : '观看中'
+  return item.type === 'series' ? `未观看 ${item.progress}` : '未观看'
 }
 
 function toggleSelected(item) {
@@ -588,7 +609,7 @@ onMounted(() => {
             <div class="mlk-toolbar">
               <VSelect v-model="selectedLibraryId" label="媒体库" :items="librarySwitchOptions" density="comfortable" hide-details />
               <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
-              <VSelect v-model="watchFilter" label="观看状态" :items="['全部', '已看完', '未看完']" density="comfortable" hide-details />
+              <VSelect v-model="watchFilter" label="观看状态" :items="mediaWatchFilterOptions" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
               <VSelect v-model="mediaSort" label="排序规则" :items="sortOptions" density="comfortable" hide-details />
               <VSelect v-model.number="pageSize" label="显示数量" :items="pageSizeOptions" density="comfortable" hide-details />
@@ -628,7 +649,7 @@ onMounted(() => {
                   <div class="text-caption text-medium-emphasis">{{ item.year || '未知年份' }} · {{ item.type_label }} · {{ item.library || item.server }}</div>
                   <div class="mlk-chip-row">
                     <VChip size="small" variant="tonal">{{ item.rating || '-' }} 分</VChip>
-                    <VChip size="small" :color="item.watched ? 'success' : 'warning'" variant="tonal">{{ item.progress }}</VChip>
+                    <VChip size="small" :color="watchStateColor(item)" variant="tonal">{{ watchStateText(item) }}</VChip>
                     <VChip size="small" variant="tonal">{{ formatBytes(item.size) }}</VChip>
                   </div>
                   <div class="text-caption text-medium-emphasis">末集 {{ item.last_episode_added_at || '-' }}</div>
@@ -963,7 +984,7 @@ onMounted(() => {
             </div>
             <div class="mlk-chip-row">
               <VChip color="primary" variant="tonal">{{ selectedMediaDetail.rating || '-' }} 分</VChip>
-              <VChip :color="selectedMediaDetail.watched ? 'success' : 'warning'" variant="tonal">{{ selectedMediaDetail.progress }}</VChip>
+              <VChip :color="watchStateColor(selectedMediaDetail)" variant="tonal">{{ watchStateText(selectedMediaDetail) }}</VChip>
               <VChip variant="tonal">{{ formatBytes(selectedMediaDetail.size) }}</VChip>
             </div>
             <p class="mlk-overview">
