@@ -49,6 +49,13 @@ jobs:
         working-directory: plugins.v2/medialibrarykeeper
         run: npm run build
 
+      - name: Prune non-federation assets
+        working-directory: plugins.v2/medialibrarykeeper
+        run: |
+          rm -f dist/index.html
+          rm -f dist/assets/index-* dist/assets/date-* dist/assets/runtime-*
+          rm -rf dist/assets/__federation_shared_vuetify
+
       - name: Commit built assets
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

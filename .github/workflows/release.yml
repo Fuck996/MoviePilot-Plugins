@@ -106,6 +106,9 @@ jobs:
               if [ -f "$plugin_dir/package.json" ] && [ -f "$plugin_dir/vite.config.js" ]; then
                 echo "Building frontend assets in $plugin_dir"
                 (cd "$plugin_dir" && npm install --no-package-lock --registry=https://registry.npmmirror.com && npm run build)
+                rm -f "$plugin_dir"/dist/index.html
+                rm -f "$plugin_dir"/dist/assets/index-* "$plugin_dir"/dist/assets/date-* "$plugin_dir"/dist/assets/runtime-*
+                rm -rf "$plugin_dir"/dist/assets/__federation_shared_vuetify
               fi
 
               echo "Packing $plugin_id from $plugin_dir -> $asset"
@@ -115,7 +118,12 @@ jobs:
                 -x "*.pyc" \
                 -x "*/node_modules/*" \
                 -x "*/node_modules/**" \
-                -x "*/package-lock.json") >/dev/null
+                -x "*/package-lock.json" \
+                -x "*/dist/index.html" \
+                -x "*/dist/assets/index-*" \
+                -x "*/dist/assets/date-*" \
+                -x "*/dist/assets/runtime-*" \
+                -x "*/dist/assets/__federation_shared_vuetify/*") >/dev/null
 
               # Re-running a version replaces the release asset for that plugin.
               if gh release view "$tag" >/dev/null 2>&1; then
