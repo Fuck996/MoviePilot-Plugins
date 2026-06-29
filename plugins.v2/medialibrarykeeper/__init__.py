@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.18"
+    plugin_version = "0.3.19"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -218,6 +218,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "summary": self._build_summary(snapshot),
                 "libraries": snapshot.get("libraries", []),
                 "media": snapshot.get("media", []),
+                "watch_audit": snapshot.get("watch_audit", []),
                 "recommendations": self._build_recommendations(snapshot),
                 "pending_plan": self.get_data(self.DATA_KEY_PENDING_PLAN) or None,
                 "history": self._load_history(),
@@ -273,6 +274,7 @@ class MediaLibraryKeeper(_PluginBase):
 
         libraries: List[Dict[str, Any]] = []
         media: List[Dict[str, Any]] = []
+        watch_audit: List[Dict[str, Any]] = []
         errors: List[str] = []
         for server_name, service_info in services.items():
             service = service_info.instance
@@ -284,7 +286,10 @@ class MediaLibraryKeeper(_PluginBase):
                 server_libraries = self._fetch_emby_libraries(service, service_info, server_name, user_id)
                 libraries.extend(server_libraries)
                 for library in server_libraries:
-                    media.extend(self._fetch_emby_items(service, service_info, server_name, user_id, library))
+                    library_media, library_audit = self._fetch_emby_items(service, service_info, server_name, user_id, library)
+                    media.extend(library_media)
+                    if library_audit:
+                        watch_audit.append(library_audit)
             except Exception as err:
                 logger.error(f"媒体库管家读取 Emby {server_name} 失败：{err}")
                 errors.append(f"{server_name}: {err}")
@@ -294,6 +299,7 @@ class MediaLibraryKeeper(_PluginBase):
             "scanned_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "libraries": self._dedupe_libraries(libraries),
             "media": media_items,
+            "watch_audit": self._build_watch_audit(watch_audit, media_items),
             "errors": errors,
         }
         self.save_data(self.DATA_KEY_SNAPSHOT, snapshot)
@@ -676,12 +682,33 @@ class MediaLibraryKeeper(_PluginBase):
         response = service.get_data(f"[HOST]emby/Users/{user_id}/Views?api_key=[APIKEY]")
         data = response.json() if hasattr(response, "json") else response
         raw_items = data.get("Items") if isinstance(data, dict) else []
+        library_paths = self._fetch_emby_library_paths(service)
         libraries = []
         for item in raw_items:
             library = self._normalize_emby_library(item, service_info, server_name)
             if library and self._accept_library_name(library.get("title")):
+                paths = library_paths.get(library.get("item_id")) or []
+                library["paths"] = paths
+                library["path"] = paths[0] if paths else self._clean_text(item.get("Path"))
                 libraries.append(library)
         return libraries
+
+    def _fetch_emby_library_paths(self, service: Any) -> Dict[str, List[str]]:
+        response = service.get_data("[HOST]emby/Library/VirtualFolders/Query?api_key=[APIKEY]")
+        data = response.json() if hasattr(response, "json") else response
+        items = data.get("Items") if isinstance(data, dict) else []
+        paths_by_id: Dict[str, List[str]] = {}
+        for item in items or []:
+            item_id = self._clean_text(item.get("ItemId"))
+            if not item_id:
+                continue
+            paths = []
+            for path_info in (item.get("LibraryOptions") or {}).get("PathInfos") or []:
+                path = self._clean_text(path_info.get("NetworkPath")) or self._clean_text(path_info.get("Path"))
+                if path and path not in paths:
+                    paths.append(path)
+            paths_by_id[item_id] = paths
+        return paths_by_id
 
     def _fetch_emby_items(
         self,
@@ -690,25 +717,25 @@ class MediaLibraryKeeper(_PluginBase):
         server_name: str,
         user_id: str,
         library: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         library_item_id = self._clean_text(library.get("item_id"))
         if not library_item_id:
-            return []
+            return [], {}
         items: List[Dict[str, Any]] = []
         start = 0
         limit = 200
         include_types = self._library_include_types(library.get("type"))
-        played_item_ids = self._fetch_emby_filtered_item_ids(
-            service, user_id, library_item_id, include_types, "IsPlayed"
+        played_item_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, include_types, "IsPlayed=true"
         )
-        resumable_item_ids = self._fetch_emby_filtered_item_ids(
-            service, user_id, library_item_id, include_types, "IsResumable"
+        resumable_item_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, include_types, "Filters=IsResumable"
         )
-        played_episode_ids = self._fetch_emby_filtered_item_ids(
-            service, user_id, library_item_id, "Episode", "IsPlayed"
+        played_episode_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, "Episode", "IsPlayed=true"
         )
-        resumable_episode_ids = self._fetch_emby_filtered_item_ids(
-            service, user_id, library_item_id, "Episode", "IsResumable"
+        resumable_episode_ids = self._fetch_emby_item_ids(
+            service, user_id, library_item_id, "Episode", "Filters=IsResumable"
         )
         fields = quote(
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
@@ -778,25 +805,41 @@ class MediaLibraryKeeper(_PluginBase):
             if len(raw_items) < limit:
                 break
             start += limit
-        return items
+        audit = {
+            "server": server_name,
+            "library_id": library.get("id") or "",
+            "library_item_id": library_item_id,
+            "library": library.get("title") or "",
+            "type": library.get("type") or "",
+            "include_types": include_types,
+            "emby_played_ids": sorted(played_item_ids),
+            "emby_resumable_ids": sorted(resumable_item_ids),
+            "emby_played_episode_count": len(played_episode_ids),
+            "emby_resumable_episode_count": len(resumable_episode_ids),
+            "query": {
+                "played": "IsPlayed=true",
+                "resumable": "Filters=IsResumable",
+            },
+        }
+        return items, audit
 
-    def _fetch_emby_filtered_item_ids(
+    def _fetch_emby_item_ids(
         self,
         service: Any,
         user_id: str,
         parent_id: str,
         include_types: str,
-        item_filter: str,
+        filter_query: str,
     ) -> set:
         item_ids = set()
-        if not parent_id or not include_types or not item_filter:
+        if not parent_id or not include_types or not filter_query:
             return item_ids
         start = 0
         limit = 500
         while True:
             url = (
                 f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(parent_id)}&Recursive=true"
-                f"&IncludeItemTypes={include_types}&Filters={quote(item_filter)}"
+                f"&IncludeItemTypes={include_types}&{filter_query}"
                 f"&Fields=UserData,UserDataPlayCount,UserDataLastPlayedDate,PlaybackPositionTicks"
                 f"&EnableUserData=true&GroupItems=false&EnableTotalRecordCount=false"
                 f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
@@ -1110,6 +1153,56 @@ class MediaLibraryKeeper(_PluginBase):
             if key:
                 deduped[key] = item
         return sorted(deduped.values(), key=lambda item: (item.get("server") or "", item.get("title") or ""))
+
+    def _build_watch_audit(self, audits: List[Dict[str, Any]], media_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        media_by_library: Dict[str, List[Dict[str, Any]]] = {}
+        for item in media_items:
+            library_id = self._clean_text(item.get("library_id"))
+            if library_id:
+                media_by_library.setdefault(library_id, []).append(item)
+
+        result = []
+        for audit in audits:
+            library_id = self._clean_text(audit.get("library_id"))
+            library_media = media_by_library.get(library_id, [])
+            plugin_played_ids = {self._clean_text(item.get("item_id")) for item in library_media if item.get("watched")}
+            plugin_resumable_ids = {
+                self._clean_text(item.get("item_id"))
+                for item in library_media
+                if item.get("watch_state") == "watching"
+            }
+            emby_played_ids = set(audit.get("emby_played_ids") or [])
+            emby_resumable_ids = set(audit.get("emby_resumable_ids") or [])
+            missing_played = sorted(emby_played_ids - plugin_played_ids)
+            extra_played = sorted(plugin_played_ids - emby_played_ids)
+            missing_resumable = sorted(emby_resumable_ids - plugin_resumable_ids)
+            extra_resumable = sorted(plugin_resumable_ids - emby_resumable_ids)
+            media_index = {self._clean_text(item.get("item_id")): item for item in library_media}
+            result.append(
+                {
+                    **{key: value for key, value in audit.items() if not key.endswith("_ids")},
+                    "media_count": len(library_media),
+                    "emby_played_count": len(emby_played_ids),
+                    "plugin_played_count": len(plugin_played_ids),
+                    "played_match": not missing_played and not extra_played,
+                    "missing_played": self._audit_samples(missing_played, media_index),
+                    "extra_played": self._audit_samples(extra_played, media_index),
+                    "emby_resumable_count": len(emby_resumable_ids),
+                    "plugin_watching_count": len(plugin_resumable_ids),
+                    "resumable_match": not missing_resumable and not extra_resumable,
+                    "missing_resumable": self._audit_samples(missing_resumable, media_index),
+                    "extra_resumable": self._audit_samples(extra_resumable, media_index),
+                }
+            )
+        return result
+
+    @staticmethod
+    def _audit_samples(item_ids: List[str], media_index: Dict[str, Dict[str, Any]], limit: int = 8) -> List[Dict[str, Any]]:
+        samples = []
+        for item_id in item_ids[:limit]:
+            media = media_index.get(item_id) or {}
+            samples.append({"item_id": item_id, "title": media.get("title") or ""})
+        return samples
 
     def _build_cleanup_plan(
         self,
@@ -1723,6 +1816,7 @@ class MediaLibraryKeeper(_PluginBase):
         movies = [item for item in media if item.get("type") == "movie"]
         series = [item for item in media if item.get("type") == "series"]
         disk_status = self._disk_status(snapshot)
+        watch_audit = snapshot.get("watch_audit", [])
         return {
             "libraries": len(libraries) or len({item.get("library") for item in media if item.get("library")}),
             "movies": len(movies),
@@ -1733,6 +1827,11 @@ class MediaLibraryKeeper(_PluginBase):
             "estimated_reclaim_size": sum(int(item.get("size") or 0) for item in media if item.get("watched")),
             "disk_warning": any(item.get("warning") for item in disk_status),
             "disk_status": disk_status,
+            "watch_audit_warning": any(
+                not item.get("played_match", True) or not item.get("resumable_match", True)
+                for item in watch_audit
+            ),
+            "watch_audit": watch_audit,
             "last_scan_at": snapshot.get("scanned_at"),
             "connection_state": "connected" if media else "not_scanned",
             "errors": snapshot.get("errors", []),
@@ -1869,6 +1968,10 @@ class MediaLibraryKeeper(_PluginBase):
     def _media_disks(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         snapshot = snapshot or self._load_snapshot()
         paths = []
+        for library in snapshot.get("libraries", []):
+            if library.get("path"):
+                paths.append(library.get("path"))
+            paths.extend(library.get("paths") or [])
         for item in snapshot.get("media", []):
             if item.get("path"):
                 paths.append(item.get("path"))

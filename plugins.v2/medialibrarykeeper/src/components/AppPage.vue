@@ -94,6 +94,8 @@ const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
 const downloaderOptions = computed(() => status.value.downloader_options || [])
+const watchAuditRows = computed(() => status.value.watch_audit || summary.value.watch_audit || [])
+const watchAuditWarnings = computed(() => watchAuditRows.value.filter(item => !item.played_match || !item.resumable_match))
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
 
 function resolveImageUrl(url) {
@@ -580,6 +582,32 @@ onMounted(() => {
               <VSheet v-for="(enabled, key) in capabilities" :key="key" border rounded class="mlk-capability">
                 <VIcon :icon="enabled ? 'mdi-check-circle-outline' : 'mdi-progress-wrench'" :color="enabled ? 'success' : 'warning'" />
                 <span>{{ capabilityLabels[key] || key }}</span>
+              </VSheet>
+            </div>
+
+            <VAlert
+              v-if="watchAuditWarnings.length"
+              type="warning"
+              variant="tonal"
+              density="comfortable"
+            >
+              播放状态审计发现 {{ watchAuditWarnings.length }} 个媒体库与 Emby 官方筛选结果不一致，请展开下方审计信息核对。
+            </VAlert>
+
+            <div v-if="watchAuditRows.length" class="mlk-audit-grid">
+              <VSheet v-for="audit in watchAuditRows" :key="`${audit.server}:${audit.library_item_id}`" border rounded class="mlk-audit-row">
+                <div>
+                  <div class="text-subtitle-2">{{ audit.library }} · {{ audit.server }}</div>
+                  <div class="text-body-2 text-medium-emphasis">
+                    已播放 Emby {{ audit.emby_played_count }} / 插件 {{ audit.plugin_played_count }}，观看中 Emby {{ audit.emby_resumable_count }} / 插件 {{ audit.plugin_watching_count }}
+                  </div>
+                  <div v-if="audit.missing_played?.length || audit.extra_played?.length" class="text-caption text-warning mt-1">
+                    已播放差异：漏标 {{ audit.missing_played?.map(item => item.title || item.item_id).join('、') || '-' }}；多标 {{ audit.extra_played?.map(item => item.title || item.item_id).join('、') || '-' }}
+                  </div>
+                </div>
+                <VChip :color="audit.played_match && audit.resumable_match ? 'success' : 'warning'" variant="tonal">
+                  {{ audit.played_match && audit.resumable_match ? '一致' : '有差异' }}
+                </VChip>
               </VSheet>
             </div>
 
@@ -1330,6 +1358,18 @@ onMounted(() => {
 
 .mlk-disk-row {
   justify-content: space-between;
+}
+
+.mlk-audit-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.mlk-audit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
 }
 
 .mlk-settings {
