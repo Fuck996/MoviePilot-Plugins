@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.26"
+    plugin_version = "0.3.27"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -591,6 +591,12 @@ class MediaLibraryKeeper(_PluginBase):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
+    @classmethod
+    def _is_played_user_data(cls, user_data: Dict[str, Any]) -> bool:
+        if not isinstance(user_data, dict):
+            return False
+        return cls._to_bool(user_data.get("Played"))
+
     @staticmethod
     def _to_int(value: Any, default: int = 0) -> int:
         try:
@@ -757,13 +763,11 @@ class MediaLibraryKeeper(_PluginBase):
             if not raw_items:
                 break
             for item in raw_items:
-                item_id = self._clean_text(item.get("Id"))
                 normalized = self._normalize_emby_item(
                     item,
                     service_info,
                     server_name,
                     library,
-                    item_id in played_item_ids,
                 )
                 if not normalized:
                     continue
@@ -808,13 +812,15 @@ class MediaLibraryKeeper(_PluginBase):
             "type": library.get("type") or "",
             "include_types": include_types,
             "emby_played_ids": sorted(played_media_ids),
-            "played_source": "IsPlayed=true",
+            "played_source": "UserData.Played",
             "played_source_counts": {
                 "IsPlayed=true": len(played_item_ids),
+                "UserData.Played": len(played_media_ids),
             },
             "emby_played_episode_count": played_episode_count,
             "played_episode_source_counts": {
                 "IsPlayed=true": len(played_episode_ids),
+                "UserData.Played": played_episode_count,
             },
             "query": {
                 "played": "IsPlayed=true",
@@ -901,9 +907,8 @@ class MediaLibraryKeeper(_PluginBase):
                 break
             total += len(raw_items)
             for episode in raw_items:
-                episode_id = self._clean_text(episode.get("Id"))
                 user_data = episode.get("UserData") or {}
-                if episode_id in played_episode_ids:
+                if self._is_played_user_data(user_data):
                     watched += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
@@ -945,7 +950,6 @@ class MediaLibraryKeeper(_PluginBase):
         service_info: Any,
         server_name: str,
         library: Dict[str, Any],
-        is_played: bool = False,
     ) -> Dict[str, Any]:
         item_type = self._clean_text(item.get("Type")).lower()
         if item_type not in {"movie", "series"}:
@@ -953,7 +957,7 @@ class MediaLibraryKeeper(_PluginBase):
         is_series = item_type == "series"
         user_data = item.get("UserData") or {}
         total_episodes = self._to_int(item.get("RecursiveItemCount") or item.get("ChildCount"), 0) if is_series else 1
-        played = is_played
+        played = self._is_played_user_data(user_data)
         if is_series:
             if played:
                 watched_episodes = total_episodes
@@ -1815,6 +1819,8 @@ class MediaLibraryKeeper(_PluginBase):
             "movies": len(movies),
             "series": len(series),
             "episodes": sum(int(item.get("total_episodes") or 0) for item in series),
+            "watched": len([item for item in media if item.get("watched")]),
+            "watched_movies": len([item for item in movies if item.get("watched")]),
             "watched_series": len([item for item in series if item.get("watched")]),
             "unwatched_large_series": len([item for item in series if not item.get("watched") and int(item.get("size") or 0) > 0]),
             "estimated_reclaim_size": sum(int(item.get("size") or 0) for item in media if item.get("watched")),
