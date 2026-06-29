@@ -9,10 +9,9 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi import Body, Depends, HTTPException, Response, status
 
 from app import schemas
-from app.api.endpoints.plugin import register_plugin_api
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.event import Event, eventmanager
+from app.core.event import eventmanager
 from app.core.security import verify_resource_token
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
@@ -38,7 +37,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.30"
+    plugin_version = "0.3.31"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2365,8 +2364,3 @@ class MediaLibraryKeeper(_PluginBase):
                 return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
             size /= 1024
         return f"{size:.1f} EB"
-
-    @eventmanager.register(EventType.PluginReload)
-    def reload(self, event: Event):
-        if event and event.event_data and event.event_data.get("plugin_id") == self.__class__.__name__:
-            register_plugin_api(plugin_id=self.__class__.__name__)

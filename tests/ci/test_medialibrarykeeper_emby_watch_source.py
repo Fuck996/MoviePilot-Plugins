@@ -42,6 +42,13 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "mlk-media-facts" in source
 
 
+def test_medialibrarykeeper_does_not_register_api_on_plugin_reload() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+
+    assert "register_plugin_api" not in source
+    assert "PluginReload" not in source
+
+
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
 
