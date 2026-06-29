@@ -8,3 +8,6 @@ def test_medialibrarykeeper_uses_user_data_for_emby_watch_state() -> None:
     assert "IsPlayed=true" not in source
     assert "Filters=IsResumable" not in source
     assert "UserData.Played" in source
+    assert "PlayCount" in source
+    assert "LastPlayedDate" in source
+    assert "/Shows/{quote(item_id)}/Episodes" in source

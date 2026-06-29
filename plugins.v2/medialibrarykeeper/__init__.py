@@ -38,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.21"
+    plugin_version = "0.3.22"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -578,7 +578,11 @@ class MediaLibraryKeeper(_PluginBase):
     def _is_played_user_data(cls, user_data: Dict[str, Any]) -> bool:
         if not isinstance(user_data, dict):
             return False
-        return cls._to_bool(user_data.get("Played"))
+        if cls._to_bool(user_data.get("Played")):
+            return True
+        if cls._to_int(user_data.get("PlayCount"), 0) > 0:
+            return True
+        return bool(cls._clean_text(user_data.get("LastPlayedDate")))
 
     @classmethod
     def _has_play_activity_user_data(cls, user_data: Dict[str, Any]) -> bool:
@@ -735,7 +739,7 @@ class MediaLibraryKeeper(_PluginBase):
             "DateCreated,Path,Genres,ProviderIds,Overview,PrimaryImageAspectRatio,BasicSyncInfo,UserData,"
             "ChildCount,RecursiveItemCount,ProductionYear,CommunityRating,CriticRating,SortName,MediaSources,"
             "ParentId,PremiereDate,RunTimeTicks,ImageTags,BackdropImageTags,UserDataPlayCount,"
-            "UserDataLastPlayedDate,PlaybackPositionTicks"
+            "UserDataLastPlayedDate,PlaybackPositionTicks,PlayedPercentage"
         )
         while True:
             url = (
@@ -866,14 +870,14 @@ class MediaLibraryKeeper(_PluginBase):
         limit = 500
         fields = quote(
             "Path,MediaSources,UserData,DateCreated,UserDataPlayCount,"
-            "UserDataLastPlayedDate,PlaybackPositionTicks"
+            "UserDataLastPlayedDate,PlaybackPositionTicks,PlayedPercentage"
         )
         last_episode_added_at = ""
         last_watched_at = ""
         while True:
             url = (
-                f"[HOST]emby/Users/{user_id}/Items?ParentId={quote(item_id)}&Recursive=true&IncludeItemTypes=Episode"
-                f"&Fields={fields}&EnableUserData=true&GroupItems=false&EnableTotalRecordCount=false"
+                f"[HOST]emby/Shows/{quote(item_id)}/Episodes?UserId={quote(user_id)}&IsMissing=false"
+                f"&Fields={fields}&EnableUserData=true&EnableTotalRecordCount=false"
                 f"&StartIndex={start}&Limit={limit}&api_key=[APIKEY]"
             )
             response = service.get_data(url)
