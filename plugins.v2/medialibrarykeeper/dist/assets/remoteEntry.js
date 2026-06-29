@@ -2,8 +2,8 @@ const currentImports = {};
       const exportSet = new Set(['Module', '__esModule', 'default', '_export_sfc']);
       let moduleMap = {
 "./Page":()=>{
-      dynamicLoadingCss(["__federation_expose_Page-B7Lu63CE.css","__federation_expose_AppPage-DDNMFGmm.css"], false, './Page');
-      return __federation_import('./__federation_expose_Page-B8h0gkt-.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
+      dynamicLoadingCss(["__federation_expose_Page-B7Lu63CE.css","__federation_expose_AppPage-vO_lWOht.css"], false, './Page');
+      return __federation_import('./__federation_expose_Page-DhZpvKVV.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./Config":()=>{
       dynamicLoadingCss(["__federation_expose_Config-BnRabf76.css"], false, './Config');
       return __federation_import('./__federation_expose_Config-8vCO6zCv.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
@@ -11,8 +11,8 @@ const currentImports = {};
       dynamicLoadingCss(["__federation_expose_Dashboard-CtWEO92h.css"], false, './Dashboard');
       return __federation_import('./__federation_expose_Dashboard-CLuRK0dA.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},
 "./AppPage":()=>{
-      dynamicLoadingCss(["__federation_expose_AppPage-DDNMFGmm.css"], false, './AppPage');
-      return __federation_import('./__federation_expose_AppPage-DQgYdSqF.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
+      dynamicLoadingCss(["__federation_expose_AppPage-vO_lWOht.css"], false, './AppPage');
+      return __federation_import('./__federation_expose_AppPage-CDPsHNLJ.js').then(module =>Object.keys(module).every(item => exportSet.has(item)) ? () => module.default : () => module)},};
       const seen = {};
       const dynamicLoadingCss = (cssFilePaths, dontAppendStylesToHead, exposeItemName) => {
         const metaUrl = import.meta.url;
