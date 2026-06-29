@@ -110,7 +110,12 @@ jobs:
 
               echo "Packing $plugin_id from $plugin_dir -> $asset"
               rm -f "$asset"
-              (cd "$(dirname "$plugin_dir")" && zip -r "$GITHUB_WORKSPACE/$asset" "$(basename "$plugin_dir")" -x "*/__pycache__/*" -x "*.pyc") >/dev/null
+              (cd "$(dirname "$plugin_dir")" && zip -r "$GITHUB_WORKSPACE/$asset" "$(basename "$plugin_dir")" \
+                -x "*/__pycache__/*" \
+                -x "*.pyc" \
+                -x "*/node_modules/*" \
+                -x "*/node_modules/**" \
+                -x "*/package-lock.json") >/dev/null
 
               # Re-running a version replaces the release asset for that plugin.
               if gh release view "$tag" >/dev/null 2>&1; then
