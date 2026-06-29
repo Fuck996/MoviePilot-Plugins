@@ -36,6 +36,7 @@ const loading = ref(false)
 const saving = ref(false)
 const planning = ref(false)
 const scanning = ref(false)
+const ruleScanning = ref(false)
 const executing = ref(false)
 const fallbackToast = ref({
   show: false,
@@ -47,6 +48,8 @@ const selectedMedia = ref([])
 const selectedLibraryId = ref('')
 const selectedMediaDetail = ref(null)
 const detailDialog = ref(false)
+const selectedPlanItem = ref(null)
+const planTargetDialog = ref(false)
 const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
@@ -185,7 +188,7 @@ const planHeaders = [
   { title: '预计释放', key: 'size', width: 120 },
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
-  { title: '操作', key: 'actions', width: 96, sortable: false },
+  { title: '操作', key: 'actions', width: 132, sortable: false },
 ]
 
 function isSelected(item) {
@@ -227,6 +230,11 @@ function removeCleanupRule(index) {
 function openMediaDetail(item) {
   selectedMediaDetail.value = item
   detailDialog.value = true
+}
+
+function openPlanTargetDialog(item) {
+  selectedPlanItem.value = item
+  planTargetDialog.value = true
 }
 
 async function createSinglePlan(item) {
@@ -272,6 +280,30 @@ async function saveConfig() {
     showToast(err?.message || '保存设置失败', 'error')
   } finally {
     saving.value = false
+  }
+}
+
+async function scanCleanupRules() {
+  ruleScanning.value = true
+  try {
+    const configResponse = await props.api.post(`${pluginBase.value}/config`, toPayloadConfig(configDraft.value))
+    if (configResponse?.success === false) {
+      showToast(configResponse.message || '保存设置失败', 'error')
+      return
+    }
+    const response = await props.api.post(`${pluginBase.value}/cleanup/scan`, {})
+    if (response?.success === false) {
+      showToast(response.message || '按规则扫描失败', 'error')
+      return
+    }
+    applyStatus(unwrapResponse(response))
+    const message = response?.message || '已按当前规则完成扫描识别'
+    showToast(message, message.includes('已有') || message.includes('未命中') ? 'warning' : 'success')
+    activeTab.value = 'plan'
+  } catch (err) {
+    showToast(err?.message || '按规则扫描失败', 'error')
+  } finally {
+    ruleScanning.value = false
   }
 }
 
@@ -395,9 +427,11 @@ defineExpose({
   loadStatus,
   saveConfig,
   scanLibrary,
+  scanCleanupRules,
   loading,
   saving,
   scanning,
+  ruleScanning,
 })
 
 onMounted(() => {
@@ -623,6 +657,7 @@ onMounted(() => {
                 <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
                 <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
                 <template #item.actions="{ item }">
+                  <VBtn icon="mdi-file-eye-outline" variant="text" :disabled="!item.delete_targets?.length" @click="openPlanTargetDialog(item)" />
                   <VBtn icon="mdi-minus-circle-outline" variant="text" color="error" :loading="planning" @click="removePlanItem(item)" />
                 </template>
               </VDataTable>
@@ -783,6 +818,9 @@ onMounted(() => {
             </div>
 
             <div class="mlk-settings-actions">
+              <VBtn prepend-icon="mdi-playlist-search" color="secondary" variant="tonal" :loading="ruleScanning" @click="scanCleanupRules">
+                立即按规则扫描
+              </VBtn>
               <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
                 保存设置
               </VBtn>
@@ -868,6 +906,36 @@ onMounted(() => {
             </div>
           </div>
         </div>
+      </VCard>
+    </VDialog>
+
+    <VDialog v-model="planTargetDialog" max-width="820">
+      <VCard v-if="selectedPlanItem">
+        <VCardTitle>审核删除目标</VCardTitle>
+        <VCardText>
+          <div class="text-subtitle-2 mb-3">{{ selectedPlanItem.title }}</div>
+          <div v-if="selectedPlanItem.delete_targets?.length" class="mlk-target-list">
+            <VSheet v-for="target in selectedPlanItem.delete_targets" :key="`${target.kind}-${target.path}`" border rounded class="mlk-target-row">
+              <div class="mlk-target-head">
+                <VChip :color="target.kind === 'src' ? 'error' : 'primary'" variant="tonal" size="small">
+                  {{ target.kind_label || (target.kind === 'src' ? '源文件' : '媒体库文件') }}
+                </VChip>
+                <VChip v-if="target.match_source === 'directory_mapping'" color="info" variant="tonal" size="small">
+                  目录映射
+                </VChip>
+              </div>
+              <div class="text-body-2">{{ target.path_preview || target.path }}</div>
+              <div v-if="target.directory_mapping" class="text-caption text-medium-emphasis">
+                {{ target.directory_mapping.name || '未命名目录配置' }} / {{ target.directory_mapping.transfer_type || '未知整理方式' }}
+              </div>
+            </VSheet>
+          </div>
+          <VEmptyState v-else icon="mdi-file-search-outline" title="没有可审核的删除目标" />
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" @click="planTargetDialog = false">关闭</VBtn>
+        </VCardActions>
       </VCard>
     </VDialog>
 
@@ -1046,6 +1114,24 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.mlk-target-list,
+.mlk-target-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mlk-target-row {
+  padding: 12px;
+}
+
+.mlk-target-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .mlk-danger-actions,

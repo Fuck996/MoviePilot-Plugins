@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.event import Event, eventmanager
 from app.core.security import verify_resource_token
 from app.db.transferhistory_oper import TransferHistoryOper
+from app.helper.directory import DirectoryHelper
 from app.helper.downloader import DownloaderHelper
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
@@ -37,7 +38,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.11"
+    plugin_version = "0.3.12"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -49,6 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     DATA_KEY_SNAPSHOT = "snapshot"
     DATA_KEY_LAST_DISK_WARNING = "last_disk_warning"
     SUPPORTED_DOWNLOADER_TYPES = {"qbittorrent", "transmission"}
+    LINK_TRANSFER_TYPES = {"link", "softlink"}
 
     def __init__(self):
         super().__init__()
@@ -107,6 +109,13 @@ class MediaLibraryKeeper(_PluginBase):
                 "methods": ["POST"],
                 "auth": "bear",
                 "summary": "拉取媒体库数据",
+            },
+            {
+                "path": "/cleanup/scan",
+                "endpoint": self.scan_cleanup_plan_api,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "按清理规则扫描并生成批次",
             },
             {
                 "path": "/cleanup/plan",
@@ -229,6 +238,25 @@ class MediaLibraryKeeper(_PluginBase):
             return schemas.Response(success=True, message="媒体库扫描完成", data=self.get_status().data)
         except Exception as err:
             logger.error(f"媒体库管家扫描失败：{err}")
+            return schemas.Response(success=False, message=str(err), data=self.get_status().data)
+
+    def scan_cleanup_plan_api(self) -> schemas.Response:
+        try:
+            snapshot = self.scan_library(notify_disk_warning=True)
+            plan = self._create_scheduled_cleanup_batch(
+                snapshot,
+                source="rule_scan",
+                overwrite_sources={"scheduled", "rule_scan"},
+            )
+            status_data = self.get_status().data
+            if plan:
+                return schemas.Response(success=True, message="已按当前清理规则生成待审核批次", data=status_data)
+            pending_plan = (status_data or {}).get("pending_plan") or {}
+            if pending_plan and pending_plan.get("source") not in {"scheduled", "rule_scan"}:
+                return schemas.Response(success=True, message="当前已有手动清理批次，已保留原批次未覆盖", data=status_data)
+            return schemas.Response(success=True, message="当前清理规则未命中媒体", data=status_data)
+        except Exception as err:
+            logger.error(f"媒体库管家规则扫描失败：{err}")
             return schemas.Response(success=False, message=str(err), data=self.get_status().data)
 
     def scan_library(self, notify_disk_warning: bool = False, build_cleanup_batch: bool = False) -> Dict[str, Any]:
@@ -925,7 +953,7 @@ class MediaLibraryKeeper(_PluginBase):
             "created_at": created_at or now_text,
             "updated_at": now_text,
             "source": source,
-            "source_label": "定时计划" if source == "scheduled" else "手动选择",
+            "source_label": self._plan_source_label(source),
             "criteria": criteria or {},
             "delete_source": delete_source,
             "items": plan_items,
@@ -935,23 +963,38 @@ class MediaLibraryKeeper(_PluginBase):
             "message": self._plan_message(plan_status, plan_items),
         }
 
-    def _create_scheduled_cleanup_batch(self, snapshot: Dict[str, Any]) -> None:
+    @staticmethod
+    def _plan_source_label(source: str) -> str:
+        return {
+            "scheduled": "定时计划",
+            "rule_scan": "规则扫描",
+            "manual": "手动选择",
+        }.get(source, "手动选择")
+
+    def _create_scheduled_cleanup_batch(
+        self,
+        snapshot: Dict[str, Any],
+        source: str = "scheduled",
+        overwrite_sources: Optional[set] = None,
+    ) -> Optional[Dict[str, Any]]:
         candidates = self._cleanup_candidates(snapshot)
         if not candidates:
-            return
+            return None
         pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
-        if pending_plan and pending_plan.get("source") != "scheduled":
+        overwrite_sources = overwrite_sources or {"scheduled"}
+        if pending_plan and pending_plan.get("source") not in overwrite_sources:
             logger.info("媒体库管家已有手动清理批次，跳过本次定时批次覆盖")
-            return
+            return None
         plan = self._build_cleanup_plan(
             candidates,
             bool(self._config.get("default_delete_source")),
-            source="scheduled",
+            source=source,
             criteria=self._cleanup_criteria_summary(),
         )
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         if self._config.get("notify_enabled"):
             self._notify_cleanup_batch(plan)
+        return plan
 
     def _cleanup_candidates(self, snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
         libraries = self._config.get("cleanup_libraries") or []
@@ -1015,8 +1058,18 @@ class MediaLibraryKeeper(_PluginBase):
             if delete_source and isinstance(src_fileitem, dict):
                 delete_targets.append(self._target_from_history(record, "src", src_fileitem))
 
+        if not records and not delete_targets:
+            delete_targets.extend(self._targets_from_directory_mapping(media, delete_source))
+
         status = "ready" if delete_targets else "no_match"
-        message = "已匹配整理记录，可执行删除。" if delete_targets else "未匹配到整理记录，已阻止执行真实删除。"
+        if records and delete_targets:
+            message = "已匹配整理记录，可执行删除。"
+        elif delete_targets:
+            dest_count = len([target for target in delete_targets if target.get("kind") == "dest"])
+            src_count = len([target for target in delete_targets if target.get("kind") == "src"])
+            message = f"未匹配整理记录，已按目录映射识别 {dest_count} 个媒体库文件、{src_count} 个源文件，请审核后执行。"
+        else:
+            message = "未匹配整理记录，也未能通过目录映射定位文件；接入 AI 后可辅助识别源文件。"
         return {
             "media_id": media.get("id"),
             "title": media.get("title"),
@@ -1035,6 +1088,138 @@ class MediaLibraryKeeper(_PluginBase):
             "status": status,
             "message": message,
         }
+
+    def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool) -> List[Dict[str, Any]]:
+        mappings = self._directory_mappings()
+        if not mappings:
+            return []
+
+        storage = StorageChain()
+        targets: List[Dict[str, Any]] = []
+        for media_path in self._media_file_paths(media):
+            mapping = self._match_directory_mapping(media_path, mappings)
+            if not mapping:
+                continue
+            dest_fileitem = self._fileitem_from_storage_path(
+                storage,
+                self._clean_text(getattr(mapping, "library_storage", "")) or "local",
+                media_path,
+            )
+            if dest_fileitem:
+                targets.append(self._target_from_mapping("dest", media_path, dest_fileitem, mapping))
+
+            transfer_type = self._clean_text(getattr(mapping, "transfer_type", "")).lower()
+            if not delete_source or transfer_type not in self.LINK_TRANSFER_TYPES:
+                continue
+            source_path = self._mapped_source_path(media_path, mapping)
+            if not source_path:
+                continue
+            src_fileitem = self._fileitem_from_storage_path(
+                storage,
+                self._clean_text(getattr(mapping, "storage", "")) or "local",
+                source_path,
+            )
+            if src_fileitem:
+                targets.append(self._target_from_mapping("src", source_path, src_fileitem, mapping))
+        return self._dedupe_targets(targets)
+
+    def _directory_mappings(self) -> List[Any]:
+        try:
+            return [
+                item
+                for item in DirectoryHelper().get_download_dirs()
+                if self._clean_text(getattr(item, "download_path", ""))
+                and self._clean_text(getattr(item, "library_path", ""))
+            ]
+        except Exception as err:
+            logger.warning(f"媒体库管家读取 MoviePilot 目录映射失败：{err}")
+            return []
+
+    def _match_directory_mapping(self, media_path: str, mappings: List[Any]) -> Optional[Any]:
+        matches = [
+            item
+            for item in mappings
+            if self._path_is_relative_to(media_path, self._clean_text(getattr(item, "library_path", "")))
+        ]
+        if not matches:
+            return None
+        return sorted(matches, key=lambda item: len(self._clean_text(getattr(item, "library_path", ""))), reverse=True)[0]
+
+    def _mapped_source_path(self, media_path: str, mapping: Any) -> str:
+        download_path = self._normalized_path_text(getattr(mapping, "download_path", ""))
+        relative_path = self._relative_path(media_path, getattr(mapping, "library_path", ""))
+        if not download_path or not relative_path:
+            return ""
+        return f"{download_path}/{relative_path}"
+
+    def _target_from_mapping(self, kind: str, path: str, fileitem: Dict[str, Any], mapping: Any) -> Dict[str, Any]:
+        size = self._to_int(fileitem.get("size") or fileitem.get("size_bytes"), 0)
+        return {
+            "record_id": None,
+            "kind": kind,
+            "kind_label": "媒体库文件" if kind == "dest" else "源文件",
+            "path": path,
+            "path_preview": self._path_preview(path),
+            "size": size,
+            "fileitem": fileitem,
+            "match_source": "directory_mapping",
+            "directory_mapping": {
+                "name": self._clean_text(getattr(mapping, "name", "")),
+                "transfer_type": self._clean_text(getattr(mapping, "transfer_type", "")),
+                "download_path": self._path_preview(getattr(mapping, "download_path", "")),
+                "library_path": self._path_preview(getattr(mapping, "library_path", "")),
+            },
+        }
+
+    def _fileitem_from_storage_path(self, storage: StorageChain, storage_name: str, path: str) -> Optional[Dict[str, Any]]:
+        if not path:
+            return None
+        try:
+            fileitem = storage.get_file_item(storage=storage_name or "local", path=Path(path))
+        except Exception as err:
+            logger.warning(f"媒体库管家读取文件项失败 {path}: {err}")
+            return None
+        if not fileitem:
+            return None
+        if hasattr(fileitem, "model_dump"):
+            return fileitem.model_dump()
+        if hasattr(fileitem, "dict"):
+            return fileitem.dict()
+        return dict(fileitem)
+
+    def _media_file_paths(self, media: Dict[str, Any]) -> List[str]:
+        if media.get("type") == "series":
+            paths = media.get("episode_paths") or []
+        else:
+            paths = []
+        if not paths and media.get("path"):
+            paths = [media.get("path")]
+        result = []
+        for path in paths:
+            clean_path = self._clean_text(path)
+            if clean_path and clean_path not in result:
+                result.append(clean_path)
+        return result
+
+    @classmethod
+    def _path_is_relative_to(cls, path: Any, root: Any) -> bool:
+        clean_path = cls._normalized_path_text(path)
+        clean_root = cls._normalized_path_text(root)
+        return bool(clean_path and clean_root and (clean_path == clean_root or clean_path.startswith(clean_root + "/")))
+
+    @classmethod
+    def _relative_path(cls, path: Any, root: Any) -> str:
+        clean_path = cls._normalized_path_text(path)
+        clean_root = cls._normalized_path_text(root)
+        if not clean_path or not clean_root or clean_path == clean_root:
+            return ""
+        if clean_path.startswith(clean_root + "/"):
+            return clean_path[len(clean_root) + 1 :]
+        return ""
+
+    @staticmethod
+    def _normalized_path_text(path: Any) -> str:
+        return str(path or "").replace("\\", "/").rstrip("/")
 
     def _match_transfer_records(self, media: Dict[str, Any]) -> List[Any]:
         records: List[Any] = []
@@ -1294,7 +1479,7 @@ class MediaLibraryKeeper(_PluginBase):
         items = plan.get("items") or []
         lines = [
             f"批次：{plan.get('batch_id') or plan.get('id')}",
-            f"命中媒体：{len(items)} 个，已匹配整理记录：{plan.get('ready_count', 0)} 个",
+            f"命中媒体：{len(items)} 个，可执行条目：{plan.get('ready_count', 0)} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
             "请进入媒体库管家清理计划页增删条目并确认执行。",
         ]
@@ -1602,9 +1787,9 @@ class MediaLibraryKeeper(_PluginBase):
         if status == "empty":
             return "当前清理批次没有媒体条目，可从媒体库中选择条目加入。"
         if status == "ready":
-            return "清理计划已生成，所有条目均匹配到整理记录。执行前请再次确认删除范围。"
+            return "清理计划已生成，所有条目均匹配到可删除文件。执行前请再次确认删除范围。"
         blocked = len([item for item in items if item.get("status") != "ready"])
-        return f"清理计划存在 {blocked} 个未匹配整理记录的条目，已阻止真实删除。"
+        return f"清理计划存在 {blocked} 个未定位到删除文件的条目，已阻止真实删除。"
 
     @staticmethod
     def _path_preview(path: Any) -> str:
