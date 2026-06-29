@@ -6,13 +6,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import Body
+from fastapi import Body, Depends, HTTPException, Response, status
 
 from app import schemas
 from app.api.endpoints.plugin import register_plugin_api
 from app.chain.storage import StorageChain
 from app.core.config import settings
 from app.core.event import Event, eventmanager
+from app.core.security import verify_resource_token
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.mediaserver import MediaServerHelper
 from app.log import logger
@@ -35,7 +36,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.7"
+    plugin_version = "0.3.8"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -127,6 +128,13 @@ class MediaLibraryKeeper(_PluginBase):
                 "summary": "调整清理批次条目",
             },
             {
+                "path": "/image",
+                "endpoint": self.get_image_api,
+                "methods": ["GET"],
+                "allow_anonymous": True,
+                "summary": "Proxy Emby image",
+            },
+            {
                 "path": "/history",
                 "endpoint": self.get_history_api,
                 "methods": ["GET"],
@@ -184,7 +192,7 @@ class MediaLibraryKeeper(_PluginBase):
         pass
 
     def get_status(self) -> schemas.Response:
-        snapshot = self._load_snapshot()
+        snapshot = self._with_proxy_image_urls(self._load_snapshot())
         return schemas.Response(
             success=True,
             data={
@@ -339,6 +347,71 @@ class MediaLibraryKeeper(_PluginBase):
 
     def get_history_api(self) -> schemas.Response:
         return schemas.Response(success=True, data={"history": self._load_history()})
+
+    def get_image_api(
+        self,
+        server: str,
+        item_id: str,
+        image_type: str = "Primary",
+        max_height: int = 500,
+        max_width: int = 340,
+        _: Any = Depends(verify_resource_token),
+    ):
+        server_name = self._clean_text(server)
+        media_item_id = self._clean_text(item_id)
+        image_name = self._clean_text(image_type) or "Primary"
+        if not server_name or not media_item_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少媒体服务器或媒体 ID")
+        if image_name not in {"Primary", "Backdrop", "Logo", "Thumb", "Banner"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支持的图片类型")
+
+        service_info = MediaServerHelper().get_service(name=server_name, type_filter="emby")
+        service = getattr(service_info, "instance", None) if service_info else None
+        if not service or not hasattr(service, "get_data"):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="媒体服务器不可用")
+
+        height = self._bound_image_size(max_height)
+        width = self._bound_image_size(max_width)
+        url = (
+            f"[HOST]Items/{quote(media_item_id, safe='')}/Images/{quote(image_name, safe='')}"
+            f"?api_key=[APIKEY]&maxHeight={height}&maxWidth={width}&quality=90"
+        )
+        response = service.get_data(url)
+        content = getattr(response, "content", None) if response else None
+        if not content:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="图片不存在或无法读取")
+
+        media_type = (getattr(response, "headers", {}) or {}).get("content-type") or "image/jpeg"
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
+
+    def _with_proxy_image_urls(self, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(snapshot, dict):
+            return {}
+        patched = dict(snapshot)
+        image_sizes = {
+            "libraries": (360, 640),
+            "media": (500, 340),
+        }
+        for key, (height, width) in image_sizes.items():
+            rows = []
+            for row in snapshot.get(key, []) or []:
+                if not isinstance(row, dict):
+                    continue
+                item = dict(row)
+                if item.get("image_url") and item.get("server") and item.get("item_id"):
+                    item["image_url"] = self._build_proxy_image_url(
+                        str(item["server"]),
+                        str(item["item_id"]),
+                        max_height=height,
+                        max_width=width,
+                    )
+                rows.append(item)
+            patched[key] = rows
+        return patched
 
     @staticmethod
     def _default_config() -> Dict[str, Any]:
@@ -578,7 +651,7 @@ class MediaLibraryKeeper(_PluginBase):
             "title": title,
             "type": collection_type,
             "type_label": self._library_type_label(collection_type),
-            "image_url": self._build_image_url(item, service_info, max_height=360, max_width=640),
+            "image_url": self._build_image_url(item, server_name, max_height=360, max_width=640),
         }
 
     def _normalize_emby_item(
@@ -617,7 +690,7 @@ class MediaLibraryKeeper(_PluginBase):
             "path": path,
             "path_preview": self._path_preview(path),
             "rating": item.get("CommunityRating") or item.get("CriticRating"),
-            "image_url": self._build_image_url(item, service_info),
+            "image_url": self._build_image_url(item, server_name),
             "overview": self._clean_text(item.get("Overview")),
             "genres": [self._clean_text(genre) for genre in item.get("Genres") or [] if self._clean_text(genre)],
             "premiere_date": self._format_emby_date(item.get("PremiereDate"))[:10],
@@ -643,18 +716,33 @@ class MediaLibraryKeeper(_PluginBase):
         library = self._clean_text(library_name)
         return any(name == library for name in library_names)
 
-    def _build_image_url(self, item: Dict[str, Any], service_info: Any, max_height: int = 500, max_width: int = 340) -> str:
+    def _build_image_url(self, item: Dict[str, Any], server_name: str, max_height: int = 500, max_width: int = 340) -> str:
         if not (item.get("ImageTags") or {}).get("Primary"):
             return ""
-        base_url = self._service_base_url(service_info)
-        if not base_url:
+        item_id = self._clean_text(item.get("Id"))
+        if not server_name or not item_id:
             return ""
-        item_id = quote(str(item.get("Id")))
-        params = f"maxHeight={max_height}&maxWidth={max_width}&quality=90"
-        api_key = self._service_api_key(service_info)
-        if api_key:
-            params = f"{params}&api_key={quote(api_key, safe='')}"
-        return f"{base_url.rstrip('/')}/emby/Items/{item_id}/Images/Primary?{params}"
+        return self._build_proxy_image_url(server_name, item_id, max_height=max_height, max_width=max_width)
+
+    def _build_proxy_image_url(self, server_name: str, item_id: str, max_height: int = 500, max_width: int = 340) -> str:
+        server = self._clean_text(server_name)
+        media_item_id = self._clean_text(item_id)
+        if not server or not media_item_id:
+            return ""
+        return (
+            f"plugin/{self.__class__.__name__}/image?"
+            f"server={quote(server, safe='')}&item_id={quote(media_item_id, safe='')}"
+            f"&image_type=Primary&max_height={self._bound_image_size(max_height)}"
+            f"&max_width={self._bound_image_size(max_width)}"
+        )
+
+    @staticmethod
+    def _bound_image_size(value: Any) -> int:
+        try:
+            size = int(value)
+        except (TypeError, ValueError):
+            return 500
+        return min(max(size, 1), 2000)
 
     @staticmethod
     def _library_type_label(collection_type: str) -> str:
@@ -668,34 +756,6 @@ class MediaLibraryKeeper(_PluginBase):
             "boxsets": "合集",
             "books": "图书",
         }.get(collection_type, "媒体库")
-
-    @staticmethod
-    def _service_base_url(service_info: Any) -> str:
-        candidates = [service_info, getattr(service_info, "config", None), getattr(service_info, "instance", None)]
-        keys = ["host", "url", "server", "server_url", "address"]
-        return MediaLibraryKeeper._first_service_value(candidates, keys)
-
-    @staticmethod
-    def _service_api_key(service_info: Any) -> str:
-        candidates = [service_info, getattr(service_info, "config", None), getattr(service_info, "instance", None)]
-        keys = ["api_key", "apikey", "apiKey", "token", "access_token"]
-        return MediaLibraryKeeper._first_service_value(candidates, keys)
-
-    @staticmethod
-    def _first_service_value(candidates: List[Any], keys: List[str]) -> str:
-        for candidate in candidates:
-            if not candidate:
-                continue
-            if isinstance(candidate, dict):
-                for key in keys:
-                    if candidate.get(key):
-                        return str(candidate[key])
-                continue
-            for key in keys:
-                value = getattr(candidate, key, None)
-                if value:
-                    return str(value)
-        return ""
 
     @staticmethod
     def _media_sources_size(sources: List[Dict[str, Any]]) -> int:

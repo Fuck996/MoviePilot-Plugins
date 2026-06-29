@@ -176,6 +176,12 @@ const historyRows = computed(() => status.value.history || []);
 const capabilities = computed(() => status.value.capabilities || {});
 const mediaServerOptions = computed(() => status.value.media_server_options || []);
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia));
+
+function resolveImageUrl(url) {
+  if (!url || /^(https?:|data:|blob:|\/)/.test(url)) return url || ''
+  const baseURL = props.api?.defaults?.baseURL || '/api/v1';
+  return `${String(baseURL).replace(/\/$/, '')}/${String(url).replace(/^\//, '')}`
+}
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0));
 const planReady = computed(() => pendingPlan.value?.status === 'ready');
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value));
@@ -623,7 +629,7 @@ return (_ctx, _cache) => {
                               (library.image_url)
                                 ? (_openBlock(), _createBlock(_component_VImg, {
                                     key: 0,
-                                    src: library.image_url,
+                                    src: resolveImageUrl(library.image_url),
                                     cover: "",
                                     class: "mlk-library-image"
                                   }, null, 8, ["src"]))
@@ -842,7 +848,7 @@ return (_ctx, _cache) => {
                                 (item.image_url)
                                   ? (_openBlock(), _createBlock(_component_VImg, {
                                       key: 0,
-                                      src: item.image_url,
+                                      src: resolveImageUrl(item.image_url),
                                       cover: ""
                                     }, null, 8, ["src"]))
                                   : (_openBlock(), _createElementBlock("div", _hoisted_22, [
@@ -928,7 +934,7 @@ return (_ctx, _cache) => {
                                 (item.image_url)
                                   ? (_openBlock(), _createBlock(_component_VImg, {
                                       key: 0,
-                                      src: item.image_url,
+                                      src: resolveImageUrl(item.image_url),
                                       cover: ""
                                     }, null, 8, ["src"]))
                                   : (_openBlock(), _createElementBlock("div", _hoisted_32, [
@@ -1352,7 +1358,7 @@ return (_ctx, _cache) => {
                     (selectedMediaDetail.value.image_url)
                       ? (_openBlock(), _createBlock(_component_VImg, {
                           key: 0,
-                          src: selectedMediaDetail.value.image_url,
+                          src: resolveImageUrl(selectedMediaDetail.value.image_url),
                           cover: ""
                         }, null, 8, ["src"]))
                       : (_openBlock(), _createElementBlock("div", _hoisted_55, [
@@ -1581,6 +1587,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-45f1cc9d"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7c495cb8"]]);
 
 export { AppPage as default };

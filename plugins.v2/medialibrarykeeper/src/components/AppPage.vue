@@ -78,6 +78,12 @@ const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
+
+function resolveImageUrl(url) {
+  if (!url || /^(https?:|data:|blob:|\/)/.test(url)) return url || ''
+  const baseURL = props.api?.defaults?.baseURL || '/api/v1'
+  return `${String(baseURL).replace(/\/$/, '')}/${String(url).replace(/^\//, '')}`
+}
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0))
 const planReady = computed(() => pendingPlan.value?.status === 'ready')
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
@@ -418,7 +424,7 @@ onMounted(() => {
                 class="mlk-library-card"
                 @click="openLibrary(library)"
               >
-                <VImg v-if="library.image_url" :src="library.image_url" cover class="mlk-library-image" />
+                <VImg v-if="library.image_url" :src="resolveImageUrl(library.image_url)" cover class="mlk-library-image" />
                 <div v-else class="mlk-library-fallback">
                   <VIcon icon="mdi-folder-multiple-image" size="42" />
                 </div>
@@ -508,7 +514,7 @@ onMounted(() => {
                 @click="openMediaDetail(item)"
               >
                 <div class="mlk-poster">
-                  <VImg v-if="item.image_url" :src="item.image_url" cover />
+                  <VImg v-if="item.image_url" :src="resolveImageUrl(item.image_url)" cover />
                   <div v-else class="mlk-poster-fallback">
                     <VIcon :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="44" />
                   </div>
@@ -549,7 +555,7 @@ onMounted(() => {
                 @click="openMediaDetail(item)"
               >
                 <div class="mlk-poster">
-                  <VImg v-if="item.image_url" :src="item.image_url" cover />
+                  <VImg v-if="item.image_url" :src="resolveImageUrl(item.image_url)" cover />
                   <div v-else class="mlk-poster-fallback">
                     <VIcon :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="44" />
                   </div>
@@ -731,7 +737,7 @@ onMounted(() => {
       <VCard v-if="selectedMediaDetail">
         <div class="mlk-detail-layout">
           <div class="mlk-detail-poster">
-            <VImg v-if="selectedMediaDetail.image_url" :src="selectedMediaDetail.image_url" cover />
+            <VImg v-if="selectedMediaDetail.image_url" :src="resolveImageUrl(selectedMediaDetail.image_url)" cover />
             <div v-else class="mlk-poster-fallback">
               <VIcon :icon="selectedMediaDetail.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="54" />
             </div>
