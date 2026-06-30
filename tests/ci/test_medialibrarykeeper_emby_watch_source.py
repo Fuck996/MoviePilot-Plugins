@@ -60,6 +60,12 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "AI资源任务识别" in source
     assert 'label="允许 AI 参与清理建议排序" disabled' not in source
     assert "mlk-table-actions" in source
+    assert "记录丢失" in source
+    assert "可执行媒体条目" in source
+    assert "已匹配媒体条目" not in source
+    assert "未找到下载器任务" in source
+    assert "源文件名" in source
+    assert "AI识别" in source
     detail_actions_source = source.split('<div class="mlk-detail-actions">', 1)[1].split("</div>", 1)[0]
     assert "deleteSource" not in detail_actions_source
     assert "VSpacer" not in detail_actions_source
@@ -116,10 +122,16 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_normalize_downloader_path_mappings" in source
     assert "_seed_task_candidates_from_targets" in source
     assert "_join_path" in source
+    assert 'status = "record_missing"' in source
+    assert 'self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])' in source
+    assert '"filename": Path(path).name' in source
+    assert '"match_source_label": "目录映射识别"' in source
+    assert '"ai_suggestions": True' in source
     assert "get_agent_tools" in source
     assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
+    assert "download_tasks: (item.download_tasks || []).map(compactSeedTask)" in provider
     assert "compactSeedCandidate" in provider
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend

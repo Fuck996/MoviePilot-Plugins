@@ -151,6 +151,7 @@ function compactPlan(plan) {
         'message',
       ]),
       delete_targets: (item.delete_targets || []).map(compactDeleteTarget),
+      download_tasks: (item.download_tasks || []).map(compactSeedTask),
       seed_candidates: (item.seed_candidates || []).map(compactSeedCandidate),
     })),
   }
@@ -175,8 +176,10 @@ function compactDeleteTarget(target) {
     'kind_label',
     'path',
     'path_preview',
+    'filename',
     'size',
     'match_source',
+    'match_source_label',
     'media_id',
     'media_title',
     'media_type',

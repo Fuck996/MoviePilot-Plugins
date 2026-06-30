@@ -50,7 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.41"
+    plugin_version = "0.3.42"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1565,7 +1565,7 @@ class MediaLibraryKeeper(_PluginBase):
         batch_id = plan_id or datetime.now().strftime("%Y%m%d%H%M%S")
         plan_items = [self._build_plan_item(media, delete_source) for media in media_items]
         ready_count = len([item for item in plan_items if item.get("status") == "ready"])
-        estimated_size = self._sum_unique_target_size(plan_items)
+        estimated_size = self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])
         plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
         return {
             "id": batch_id,
@@ -1688,13 +1688,18 @@ class MediaLibraryKeeper(_PluginBase):
         download_tasks = self._download_tasks_for_media(media, records)
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
 
+        has_source_target = any(target.get("kind") == "src" for target in delete_targets)
         status = "ready" if delete_targets else "no_match"
+        if not records and delete_source and delete_targets and not has_source_target:
+            status = "record_missing"
         if records and delete_targets:
             message = "已匹配整理记录，可执行删除。"
+        elif status == "record_missing":
+            message = "整理记录丢失，目录映射只定位到媒体库文件，未找到源文件；不会自动执行。"
         elif delete_targets:
             dest_count = len([target for target in delete_targets if target.get("kind") == "dest"])
             src_count = len([target for target in delete_targets if target.get("kind") == "src"])
-            message = f"未匹配整理记录，已按目录映射识别 {dest_count} 个媒体库文件、{src_count} 个源文件，请审核后执行。"
+            message = f"整理记录丢失，已按目录映射识别 {dest_count} 个媒体库文件、{src_count} 个源文件，请审核后执行。"
         else:
             message = "未匹配整理记录，也未能通过目录映射定位文件；接入 AI 后可辅助识别源文件。"
         return {
@@ -1830,9 +1835,11 @@ class MediaLibraryKeeper(_PluginBase):
             "kind_label": "媒体库文件" if kind == "dest" else "源文件",
             "path": path,
             "path_preview": self._path_preview(path),
+            "filename": Path(path).name,
             "size": size,
             "fileitem": fileitem,
             "match_source": "directory_mapping",
+            "match_source_label": "目录映射识别",
             "directory_mapping": {
                 "name": self._clean_text(getattr(mapping, "name", "")),
                 "transfer_type": self._clean_text(getattr(mapping, "transfer_type", "")),
@@ -2876,7 +2883,7 @@ class MediaLibraryKeeper(_PluginBase):
             "emby_scan": True,
             "transfer_history_match": True,
             "storage_delete": True,
-            "ai_suggestions": False,
+            "ai_suggestions": True,
             "notification": True,
         }
 

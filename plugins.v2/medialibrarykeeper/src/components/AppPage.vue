@@ -144,6 +144,16 @@ const planStatusColor = computed(() => {
   if (planExecutable.value) return 'warning'
   return 'error'
 })
+function planItemStatusText(item) {
+  if (item.status === 'ready') return '可执行'
+  if (item.status === 'record_missing') return '记录丢失'
+  return '未匹配'
+}
+function planItemStatusColor(item) {
+  if (item.status === 'ready') return 'success'
+  if (item.status === 'record_missing') return 'error'
+  return 'warning'
+}
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
 const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
@@ -989,7 +999,7 @@ onUnmounted(() => {
                       </span>
                     </template>
                   </VTooltip>
-                  <VTooltip text="执行当前批次中已匹配的清理条目" location="top">
+                  <VTooltip text="执行当前批次中可执行的清理条目" location="top">
                     <template #activator="{ props: tooltipProps }">
                       <span v-bind="tooltipProps">
                         <VBtn
@@ -1010,8 +1020,8 @@ onUnmounted(() => {
                 <div v-show="planExpanded" class="mlk-plan-detail">
                   <VDataTable :headers="planHeaders" :items="pendingPlanItems" density="comfortable">
                     <template #item.status="{ item }">
-                      <VChip :color="item.status === 'ready' ? 'success' : 'warning'" variant="tonal" size="small">
-                        {{ item.status === 'ready' ? '已匹配' : '未匹配' }}
+                      <VChip :color="planItemStatusColor(item)" variant="tonal" size="small">
+                        {{ planItemStatusText(item) }}
                       </VChip>
                     </template>
                     <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
@@ -1390,6 +1400,28 @@ onUnmounted(() => {
         <VCardTitle>审核删除目标</VCardTitle>
         <VCardText>
           <div class="text-subtitle-2 mb-3">{{ selectedPlanItem.title }}</div>
+          <div class="mlk-target-head mb-3">
+            <VChip :color="planItemStatusColor(selectedPlanItem)" variant="tonal" size="small">
+              {{ planItemStatusText(selectedPlanItem) }}
+            </VChip>
+            <span class="text-body-2 text-medium-emphasis">{{ selectedPlanItem.message }}</span>
+          </div>
+          <div class="mb-5">
+            <div class="text-subtitle-2 mb-2">下载器任务</div>
+            <VSheet v-if="selectedPlanItem.download_tasks?.length" border rounded class="mlk-target-row">
+              <div v-for="task in selectedPlanItem.download_tasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
+                <div class="mlk-target-head">
+                  <VChip color="success" variant="tonal" size="small">已找到</VChip>
+                  <VChip variant="tonal" size="small">{{ task.downloader || task.original_downloader || '未知下载器' }}</VChip>
+                  <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
+                </div>
+                <div class="text-body-2">{{ task.download_hash }}</div>
+              </div>
+            </VSheet>
+            <VAlert v-else type="warning" variant="tonal" density="comfortable">
+              未找到下载器任务；如果整理记录缺少 download hash，需要通过“保种排查候选”确认后再处理。
+            </VAlert>
+          </div>
           <div v-if="selectedPlanItem.delete_targets?.length" class="mlk-target-list">
             <VSheet v-for="target in selectedPlanItem.delete_targets" :key="`${target.kind}-${target.path}`" border rounded class="mlk-target-row">
               <div class="mlk-target-head">
@@ -1397,12 +1429,18 @@ onUnmounted(() => {
                   {{ target.kind_label || (target.kind === 'src' ? '源文件' : '媒体库文件') }}
                 </VChip>
                 <VChip v-if="target.match_source === 'directory_mapping'" color="info" variant="tonal" size="small">
-                  目录映射
+                  {{ target.match_source_label || '目录映射识别' }}
+                </VChip>
+                <VChip v-if="target.match_source === 'ai_resource_recognition'" color="warning" variant="tonal" size="small">
+                  AI识别
                 </VChip>
               </div>
-              <div class="text-body-2">{{ target.path_preview || target.path }}</div>
+              <div v-if="target.kind === 'src' && target.filename" class="text-caption text-medium-emphasis">源文件名</div>
+              <div v-if="target.kind === 'src' && target.filename" class="text-body-2">{{ target.filename }}</div>
+              <div class="text-caption text-medium-emphasis mt-1">文件路径</div>
+              <div class="text-body-2">{{ target.path || target.path_preview }}</div>
               <div v-if="target.directory_mapping" class="text-caption text-medium-emphasis">
-                {{ target.directory_mapping.name || '未命名目录配置' }} / {{ target.directory_mapping.transfer_type || '未知整理方式' }}
+                目录配置：{{ target.directory_mapping.name || '未命名目录配置' }}；整理方式：{{ target.directory_mapping.transfer_type || '未知' }}
               </div>
             </VSheet>
           </div>
@@ -1537,11 +1575,11 @@ onUnmounted(() => {
         <VCardTitle>确认执行清理计划</VCardTitle>
         <VCardText>
           <div class="text-body-2">
-            本次计划将删除 {{ pendingPlan?.ready_count || 0 }} 个已匹配媒体条目关联文件，预计释放
+            本次计划将删除 {{ pendingPlan?.ready_count || 0 }} 个可执行媒体条目关联文件，预计释放
             {{ formatBytes(pendingPlan?.estimated_reclaim_size) }}。执行成功后会删除对应整理记录。
           </div>
           <VAlert v-if="pendingPlan && (pendingPlan.ready_count || 0) < pendingPlanItems.length" type="info" variant="tonal" density="comfortable" class="mt-4">
-            批次中还有 {{ pendingPlanItems.length - (pendingPlan.ready_count || 0) }} 个未匹配条目，本次不会执行这些条目。
+            批次中还有 {{ pendingPlanItems.length - (pendingPlan.ready_count || 0) }} 个不可执行条目，本次不会执行这些条目。
           </VAlert>
           <VAlert type="warning" variant="tonal" density="comfortable" class="mt-4">
             这是不可逆操作；请确认媒体库文件和源文件范围都符合预期。
@@ -1854,6 +1892,12 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.mlk-download-task-row + .mlk-download-task-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .mlk-detail-actions {
