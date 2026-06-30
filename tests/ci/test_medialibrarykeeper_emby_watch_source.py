@@ -40,14 +40,23 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.0"' in source
+    assert 'plugin_version = "1.0.1"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.0"
+    assert meta["version"] == "1.0.1"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.0"
-    assert list(meta["history"].keys()) == ["v1.0.0"]
-    assert "正式上线" in meta["history"]["v1.0.0"]
+    assert plugin_package["version"] == "1.0.1"
+    assert list(meta["history"].keys()) == ["v1.0.1"]
+    assert "首次启用" in meta["history"]["v1.0.1"]
     assert not any(key.startswith("v0.") for key in meta["history"])
+
+
+def test_medialibrarykeeper_sidebar_nav_is_controlled_by_visibility_setting() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    sidebar_source = source.split("def get_sidebar_nav", 1)[1].split("def get_dashboard_meta", 1)[0]
+
+    assert "show_sidebar_nav" in sidebar_source
+    assert "not self.get_state()" not in sidebar_source
+    assert '"nav_key": "main"' in sidebar_source
 
 
 def test_medialibrarykeeper_app_page_exposes_stable_entry() -> None:
