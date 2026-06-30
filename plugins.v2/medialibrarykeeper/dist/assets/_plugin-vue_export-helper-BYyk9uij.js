@@ -154,6 +154,10 @@ function compactPlan(plan) {
         'status',
         'message',
       ]),
+      matched_transfer_records: (item.matched_transfer_records || []).map(record => pickFields(record, [
+        'record_id',
+        'title',
+      ])),
       delete_targets: (item.delete_targets || []).map(compactDeleteTarget),
       download_tasks: (item.download_tasks || []).map(compactSeedTask),
       seed_candidates: (item.seed_candidates || []).map(compactSeedCandidate),
@@ -247,6 +251,7 @@ function compactSeedTask(task) {
     'downloader',
     'original_downloader',
     'downloader_type',
+    'candidate_downloaders',
     'download_hash',
     'source',
     'error',
