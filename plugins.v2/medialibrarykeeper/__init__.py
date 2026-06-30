@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Body, Depends, HTTPException, Response, status
@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.49"
+    plugin_version = "0.3.50"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -455,16 +455,21 @@ class MediaLibraryKeeper(_PluginBase):
         plan_id = self._clean_text(text.replace(self.MESSAGE_ACTION_CONFIRM_CLEANUP, "", 1))
         success, message = self._confirm_cleanup_plan(plan_id)
         title = "【媒体库管家】已确认清理批次" if success else "【媒体库管家】清理批次确认失败"
-        self.post_message(
-            channel=event_data.get("channel"),
-            title=title,
-            text=message,
-            link=self._cleanup_page_url(),
-            userid=event_data.get("userid") or event_data.get("user"),
-            buttons=self._cleanup_page_buttons(),
-            original_message_id=event_data.get("original_message_id"),
-            original_chat_id=event_data.get("original_chat_id"),
-        )
+        link = self._cleanup_page_url()
+        message_kwargs = {
+            "channel": event_data.get("channel"),
+            "title": title,
+            "text": message,
+            "userid": event_data.get("userid") or event_data.get("user"),
+            "buttons": self._cleanup_message_buttons(self._cleanup_page_buttons()) or None,
+            "original_message_id": event_data.get("original_message_id"),
+            "original_chat_id": event_data.get("original_chat_id"),
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        if link:
+            message_kwargs["link"] = link
+        self.post_message(**message_kwargs)
 
     def get_history_api(self) -> schemas.Response:
         return schemas.Response(success=True, data={"history": self._load_history()})
@@ -2774,16 +2779,10 @@ class MediaLibraryKeeper(_PluginBase):
             f"批次：{plan.get('batch_id') or plan.get('id')}",
             f"命中媒体：{len(items)} 个，有记录：{recorded_count} 个，记录丢失：{missing_count} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
-            "请审核删除目标后确认执行；也可以打开媒体库管家页面继续调整批次。",
-            f"页面：{self._cleanup_page_url()}",
+            "请打开媒体库管家审核删除目标后确认执行。",
         ]
-        for item in items[:8]:
-            lines.append(
-                f"- {item.get('title')} / {item.get('library') or item.get('type_label')} / "
-                f"{item.get('message') or item.get('status')}"
-            )
-        if len(items) > 8:
-            lines.append(f"... 另有 {len(items) - 8} 个媒体")
+        if missing_count:
+            lines.append("记录丢失条目需要在页面核对目录映射和源文件候选。")
         self._post_cleanup_message(
             title="【媒体库管家】清理批次待确认",
             text="\n".join(lines),
@@ -2791,17 +2790,24 @@ class MediaLibraryKeeper(_PluginBase):
         )
 
     def _post_cleanup_message(self, title: str, text: str, buttons: Optional[List[List[Dict[str, str]]]] = None, **kwargs) -> None:
+        link = self._cleanup_page_url()
+        safe_buttons = self._cleanup_message_buttons(buttons)
         logger.info(
             "媒体库管家发送清理通知："
-            f"title={title}，link={self._cleanup_page_url()}，buttons={sum(len(row) for row in buttons or [])}，mtype=default"
+            f"title={title}，link={link or '-'}，buttons={sum(len(row) for row in safe_buttons or [])}，"
+            f"parse_mode=HTML，mtype=default"
         )
-        self.post_message(
-            title=title,
-            text=text,
-            link=self._cleanup_page_url(),
-            buttons=buttons,
+        message_kwargs = {
+            "title": title,
+            "text": text,
+            "buttons": safe_buttons or None,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
             **kwargs,
-        )
+        }
+        if link:
+            message_kwargs["link"] = link
+        self.post_message(**message_kwargs)
 
     def _cleanup_batch_buttons(self, plan: Dict[str, Any]) -> List[List[Dict[str, str]]]:
         buttons = []
@@ -2813,14 +2819,41 @@ class MediaLibraryKeeper(_PluginBase):
                     f"{self.MESSAGE_ACTION_CONFIRM_CLEANUP}{plan.get('id')}"
                 ),
             })
-        buttons.append({"text": "打开清理计划", "url": self._cleanup_page_url()})
-        return [buttons]
+        link = self._cleanup_page_url()
+        if link:
+            buttons.append({"text": "打开清理计划", "url": link})
+        return [buttons] if buttons else []
 
     def _cleanup_page_buttons(self) -> List[List[Dict[str, str]]]:
-        return [[{"text": "打开清理计划", "url": self._cleanup_page_url()}]]
+        link = self._cleanup_page_url()
+        return [[{"text": "打开清理计划", "url": link}]] if link else []
 
     def _cleanup_page_url(self) -> str:
-        return settings.MP_DOMAIN(f"#/plugin-app/{self.__class__.__name__}/main")
+        link = self._clean_text(settings.MP_DOMAIN(f"#/plugin-app/{self.__class__.__name__}/main"))
+        return link if self._is_http_url(link) else ""
+
+    def _cleanup_message_buttons(self, buttons: Optional[List[List[Dict[str, str]]]]) -> List[List[Dict[str, str]]]:
+        safe_rows: List[List[Dict[str, str]]] = []
+        for row in buttons or []:
+            safe_row = []
+            for button in row or []:
+                text = self._clean_text(button.get("text"))
+                callback_data = self._clean_text(button.get("callback_data"))
+                url = self._clean_text(button.get("url"))
+                if not text:
+                    continue
+                if callback_data:
+                    safe_row.append({"text": text, "callback_data": callback_data})
+                elif self._is_http_url(url):
+                    safe_row.append({"text": text, "url": url})
+            if safe_row:
+                safe_rows.append(safe_row)
+        return safe_rows
+
+    @staticmethod
+    def _is_http_url(url: Any) -> bool:
+        parsed = urlparse(str(url or "").strip())
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
     def _notify_disk_warning(self, snapshot: Dict[str, Any]) -> None:
         if not self._config.get("disk_warning_enabled") or not self._config.get("notify_enabled"):

@@ -153,6 +153,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_confirm_cleanup_plan" in source
     assert "_cleanup_batch_buttons" in source
     assert "_cleanup_page_url" in source
+    assert "_cleanup_message_buttons" in source
+    assert "_is_http_url" in source
     assert 'settings.MP_DOMAIN(f"#/plugin-app/{self.__class__.__name__}/main")' in source
     assert 'callback_data": (' in source
     assert "buttons=self._cleanup_batch_buttons(plan)" in source
@@ -160,9 +162,15 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_post_cleanup_message" in source
     assert "mtype=NotificationType.Plugin" not in source
     assert "mtype=default" in source
+    assert "parse_mode=HTML" in source
+    assert '"parse_mode": "HTML"' in source
+    assert '"disable_web_page_preview": True' in source
+    assert 'elif self._is_http_url(url)' in source
     assert "手动整理生成清理批次，准备发送通知" in source
     notify_batch_source = source.split("def _notify_cleanup_batch", 1)[1].split("def _post_cleanup_message", 1)[0]
     assert "NotificationType.MediaServer" not in notify_batch_source
+    assert "页面：" not in notify_batch_source
+    assert "items[:8]" not in notify_batch_source
     assert "媒体库管家发送清理通知" in source
     assert "媒体库管家手动检查未发送清理批次通知" in source
     assert 'status = "record_missing"' in source
