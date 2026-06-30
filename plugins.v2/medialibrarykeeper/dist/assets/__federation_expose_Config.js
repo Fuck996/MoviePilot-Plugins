@@ -1,7 +1,7 @@
 import { importShared } from './__federation_fn_import.js';
 import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "mlk-config" };
@@ -34,12 +34,37 @@ const props = __props;
 const emit = __emit;
 const config = ref(toEditableConfig());
 const loadingOptions = ref(false);
+const notice = ref({
+  show: false,
+  text: '',
+  color: 'warning',
+});
 const mediaServerOptions = ref([]);
 const downloaderOptions = ref([]);
+const capabilities = ref({});
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`);
+const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true);
+const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。');
 
 function saveConfig() {
   emit('save', toPayloadConfig(config.value));
+}
+
+function showNotice(message, color = 'warning') {
+  notice.value = {
+    show: true,
+    text: message,
+    color,
+  };
+}
+
+function updateAiSuggestions(value) {
+  if (value && !aiAgentReady.value) {
+    config.value.ai_suggestions = false;
+    showNotice(aiAgentMessage.value);
+    return
+  }
+  config.value.ai_suggestions = Boolean(value);
 }
 
 async function loadMediaServerOptions() {
@@ -48,6 +73,10 @@ async function loadMediaServerOptions() {
   try {
     const response = await props.api.get(`${pluginBase.value}/status`);
     const status = unwrapResponse(response) || {};
+    capabilities.value = status.capabilities || {};
+    if (!capabilities.value.ai_agent_ready) {
+      config.value.ai_suggestions = false;
+    }
     mediaServerOptions.value = status.media_server_options || [];
     downloaderOptions.value = status.downloader_options || [];
   } finally {
@@ -67,6 +96,7 @@ return (_ctx, _cache) => {
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VSelect = _resolveComponent("VSelect");
+  const _component_VSnackbar = _resolveComponent("VSnackbar");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createVNode(_component_VToolbar, {
@@ -140,33 +170,43 @@ return (_ctx, _cache) => {
         "persistent-hint": ""
       }, null, 8, ["modelValue", "items", "loading", "disabled"]),
       _createVNode(_component_VSwitch, {
-        modelValue: config.value.ai_suggestions,
-        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((config.value.ai_suggestions) = $event)),
+        "model-value": config.value.ai_suggestions,
         color: "primary",
         inset: "",
-        label: "允许 AI 参与清理建议排序",
-        disabled: ""
-      }, null, 8, ["modelValue"]),
+        label: "AI资源任务识别",
+        "onUpdate:modelValue": updateAiSuggestions
+      }, null, 8, ["model-value"]),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.default_delete_source,
-        "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((config.value.default_delete_source) = $event)),
+        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((config.value.default_delete_source) = $event)),
         color: "error",
         inset: "",
         label: "默认同时删除源文件"
       }, null, 8, ["modelValue"]),
       _createVNode(_component_VSwitch, {
         modelValue: config.value.delete_seed_tasks,
-        "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((config.value.delete_seed_tasks) = $event)),
+        "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((config.value.delete_seed_tasks) = $event)),
         color: "warning",
         inset: "",
         label: "删除资源时同步删除保种任务"
       }, null, 8, ["modelValue"])
-    ])
+    ]),
+    _createVNode(_component_VSnackbar, {
+      modelValue: notice.value.show,
+      "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((notice.value.show) = $event)),
+      color: notice.value.color,
+      timeout: "3200"
+    }, {
+      default: _withCtx(() => [
+        _createTextVNode(_toDisplayString(notice.value.text), 1)
+      ]),
+      _: 1
+    }, 8, ["modelValue", "color"])
   ]))
 }
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-01416085"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-2d9e41c9"]]);
 
 export { Config as default };

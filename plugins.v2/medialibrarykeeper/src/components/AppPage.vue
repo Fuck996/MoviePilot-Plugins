@@ -37,6 +37,7 @@ const saving = ref(false)
 const creatingPlan = ref(false)
 const updatingPlan = ref(false)
 const scanning = ref(false)
+const syncingLibraries = ref(false)
 const ruleScanning = ref(false)
 const executing = ref(false)
 const fallbackToast = ref({
@@ -106,6 +107,9 @@ const pendingPlanRecordStats = computed(() => pendingPlanItems.value.reduce((sta
 }, { recorded: 0, missing: 0 }))
 const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
+const visibleCapabilities = computed(() => Object.fromEntries(Object.entries(capabilities.value).filter(([, value]) => typeof value === 'boolean')))
+const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true)
+const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。')
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
 const downloaderOptions = computed(() => status.value.downloader_options || [])
 const selectedPlanItems = computed(() => selectedMedia.value.map(planItemFromMedia))
@@ -473,6 +477,28 @@ async function loadStatus(showLoading = true) {
   }
 }
 
+async function syncLibraries(showToastOnSuccess = true) {
+  if (syncingLibraries.value) return
+  syncingLibraries.value = true
+  try {
+    const response = await props.api.post(`${pluginBase.value}/libraries/sync`, {
+      mediaservers: configDraft.value.mediaservers || [],
+    })
+    if (response?.success === false) {
+      showToast(response.message || '同步媒体库列表失败', 'error')
+      return
+    }
+    applyStatus(unwrapResponse(response), { preserveConfig: true })
+    if (showToastOnSuccess) {
+      showToast(response?.message || '媒体库列表已同步')
+    }
+  } catch (err) {
+    showToast(err?.message || '同步媒体库列表失败', 'error')
+  } finally {
+    syncingLibraries.value = false
+  }
+}
+
 function loadCachedStatus() {
   const cached = readStatusCache(props.pluginId)
   if (cached) applyStatus(cached, { persist: false })
@@ -485,7 +511,13 @@ function applyStatus(data, options = {}) {
   if (normalized.removedIds.size) {
     selectedMedia.value = selectedMedia.value.filter(item => !normalized.removedIds.has(item.id))
   }
-  configDraft.value = toEditableConfig(status.value.config)
+  if (!options.preserveConfig) {
+    const nextConfig = toEditableConfig(status.value.config)
+    if (!status.value.capabilities?.ai_agent_ready) {
+      nextConfig.ai_suggestions = false
+    }
+    configDraft.value = nextConfig
+  }
   if (options.persist !== false) {
     writeStatusCache(props.pluginId, status.value)
   }
@@ -537,6 +569,15 @@ async function saveConfig() {
   } finally {
     saving.value = false
   }
+}
+
+function updateAiSuggestions(value) {
+  if (value && !aiAgentReady.value) {
+    configDraft.value.ai_suggestions = false
+    showToast(aiAgentMessage.value, 'warning')
+    return
+  }
+  configDraft.value.ai_suggestions = Boolean(value)
 }
 
 async function scanCleanupRules() {
@@ -735,6 +776,7 @@ function stopQueuePolling() {
 defineExpose({
   loadStatus,
   saveConfig,
+  syncLibraries,
   scanLibrary,
   scanCleanupRules,
   loading,
@@ -745,7 +787,11 @@ defineExpose({
 
 onMounted(() => {
   loadCachedStatus()
-  loadStatus()
+  loadStatus().then(() => {
+    if (!libraryOptions.value.length) {
+      syncLibraries(false)
+    }
+  })
 })
 
 watch(cleanupQueueRows, (rows) => {
@@ -825,7 +871,7 @@ onUnmounted(() => {
             </div>
 
             <div class="mlk-capability-grid">
-              <VSheet v-for="(enabled, key) in capabilities" :key="key" border rounded class="mlk-capability">
+              <VSheet v-for="(enabled, key) in visibleCapabilities" :key="key" border rounded class="mlk-capability">
                 <VIcon :icon="enabled ? 'mdi-check-circle-outline' : 'mdi-progress-wrench'" :color="enabled ? 'success' : 'warning'" />
                 <span>{{ capabilityLabels[key] || key }}</span>
               </VSheet>
@@ -1312,7 +1358,13 @@ onUnmounted(() => {
             <div class="mlk-settings-group">
               <div class="text-subtitle-1 font-weight-medium">删除行为</div>
               <div class="mlk-switch-grid">
-                <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="AI资源任务识别" />
+                <VSwitch
+                  :model-value="configDraft.ai_suggestions"
+                  color="primary"
+                  inset
+                  label="AI资源任务识别"
+                  @update:model-value="updateAiSuggestions"
+                />
                 <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
                 <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
               </div>
@@ -1329,9 +1381,14 @@ onUnmounted(() => {
                   <div class="text-subtitle-1 font-weight-medium">清理计划</div>
                   <div class="text-caption text-medium-emphasis">先限定参与计划的媒体库，再配置多条条件组合；任意一组命中即进入待清理批次。</div>
                 </div>
-                <VBtn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addCleanupRule">
-                  添加组合
-                </VBtn>
+                <div class="mlk-section-actions">
+                  <VBtn prepend-icon="mdi-database-sync-outline" color="info" variant="tonal" :loading="syncingLibraries" @click="syncLibraries()">
+                    同步媒体库列表
+                  </VBtn>
+                  <VBtn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addCleanupRule">
+                    添加组合
+                  </VBtn>
+                </div>
               </div>
               <VSelect
                 v-model="configDraft.cleanup_libraries"
@@ -2082,6 +2139,13 @@ onUnmounted(() => {
   align-items: flex-start;
 }
 
+.mlk-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .mlk-rule-row {
   padding: 14px;
 }
@@ -2239,6 +2303,14 @@ onUnmounted(() => {
 
   .mlk-section-header > .v-btn {
     width: 100%;
+  }
+
+  .mlk-section-actions {
+    width: 100%;
+  }
+
+  .mlk-section-actions .v-btn {
+    flex: 1 1 180px;
   }
 
   .mlk-rule-grid {

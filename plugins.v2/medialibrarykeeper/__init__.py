@@ -143,6 +143,13 @@ class MediaLibraryKeeper(_PluginBase):
                 "summary": "拉取媒体库数据",
             },
             {
+                "path": "/libraries/sync",
+                "endpoint": self.sync_libraries_api,
+                "methods": ["POST"],
+                "auth": "bear",
+                "summary": "同步媒体库列表",
+            },
+            {
                 "path": "/cleanup/scan",
                 "endpoint": self.scan_cleanup_plan_api,
                 "methods": ["POST"],
@@ -280,6 +287,25 @@ class MediaLibraryKeeper(_PluginBase):
             logger.error(f"媒体库管家扫描失败：{err}")
             return schemas.Response(success=False, message=str(err), data=self.get_status().data)
 
+    def sync_libraries_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
+        try:
+            payload = payload or {}
+            mediaservers = [
+                self._clean_text(item)
+                for item in payload.get("mediaservers") or []
+                if self._clean_text(item)
+            ]
+            libraries = self.sync_libraries(name_filters=mediaservers if "mediaservers" in payload else None)
+            status_data = self.get_status().data
+            return schemas.Response(
+                success=True,
+                message=f"媒体库列表已同步，共 {len(libraries)} 个媒体库",
+                data=status_data,
+            )
+        except Exception as err:
+            logger.error(f"媒体库管家同步媒体库列表失败：{err}")
+            return schemas.Response(success=False, message=str(err), data=self.get_status().data)
+
     def scan_cleanup_plan_api(self) -> schemas.Response:
         try:
             snapshot = self.scan_library(notify_disk_warning=True)
@@ -349,6 +375,36 @@ class MediaLibraryKeeper(_PluginBase):
         if build_cleanup_batch:
             self._create_scheduled_cleanup_batch(snapshot)
         return snapshot
+
+    def sync_libraries(self, name_filters: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        services = self._active_emby_services(name_filters=name_filters)
+        if not services:
+            raise RuntimeError("没有可用的 Emby 媒体服务器，请先在 MoviePilot 媒体服务器中完成配置。")
+
+        libraries: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        for server_name, service_info in services.items():
+            service = service_info.instance
+            try:
+                scan_users = self._resolve_emby_scan_users(service, service_info)
+                if not scan_users:
+                    errors.append(f"{server_name} 未解析到 Emby 用户，请检查 MoviePilot 媒体服务器用户名配置。")
+                    continue
+                libraries.extend(self._fetch_emby_libraries(service, service_info, server_name, scan_users[0]["id"]))
+            except Exception as err:
+                logger.error(f"媒体库管家读取 Emby {server_name} 媒体库列表失败：{err}")
+                errors.append(f"{server_name}: {err}")
+
+        deduped_libraries = self._dedupe_libraries(libraries)
+        snapshot = self._load_snapshot()
+        snapshot.update({
+            "libraries": deduped_libraries,
+            "library_synced_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "library_sync_errors": errors,
+        })
+        self.save_data(self.DATA_KEY_SNAPSHOT, snapshot)
+        logger.info(f"媒体库管家媒体库列表同步完成：libraries={len(deduped_libraries)}，errors={len(errors)}")
+        return deduped_libraries
 
     def create_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
@@ -959,8 +1015,8 @@ class MediaLibraryKeeper(_PluginBase):
             "transmission": "Transmission",
         }.get(dtype, dtype)
 
-    def _active_emby_services(self) -> Dict[str, Any]:
-        name_filters = self._config.get("mediaservers") or None
+    def _active_emby_services(self, name_filters: Optional[List[str]] = None) -> Dict[str, Any]:
+        name_filters = name_filters if name_filters is not None else (self._config.get("mediaservers") or None)
         services = MediaServerHelper().get_services(type_filter="emby", name_filters=name_filters) or {}
         active_services = {}
         for name, service_info in services.items():
@@ -1720,9 +1776,12 @@ class MediaLibraryKeeper(_PluginBase):
             details = []
             no_source_count = ai_states.count("no_source_candidates")
             failed_count = ai_states.count("ai_failed")
+            unavailable_count = ai_states.count("ai_unavailable")
             no_match_count = ai_states.count("no_ai_match")
             if no_source_count:
                 details.append(f"无疑似源文件 {no_source_count} 个")
+            if unavailable_count:
+                details.append(f"智能助手未配置 {unavailable_count} 个")
             if failed_count:
                 details.append(f"AI识别失败 {failed_count} 个")
             if no_match_count:
@@ -1871,11 +1930,14 @@ class MediaLibraryKeeper(_PluginBase):
         status = "ready" if delete_targets else "no_match"
         if not records and delete_source and delete_targets and not has_source_target:
             status = "record_missing"
-            if self._config.get("ai_suggestions"):
+            if self._ai_resource_recognition_enabled():
                 ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets)
                 ai_resource_candidates = ai_result["candidates"]
                 ai_resource_state = ai_result["state"]
                 ai_resource_message = ai_result["message"]
+            elif self._config.get("ai_suggestions"):
+                ai_resource_state = "ai_unavailable"
+                ai_resource_message = self._ai_agent_status()[1]
         if records and delete_targets:
             message = "已匹配整理记录。"
         elif status == "record_missing":
@@ -3194,6 +3256,7 @@ class MediaLibraryKeeper(_PluginBase):
             "source": "database",
             "has_snapshot": bool(snapshot),
             "scanned_at": snapshot.get("scanned_at"),
+            "library_synced_at": snapshot.get("library_synced_at"),
             "library_count": len(libraries),
             "media_count": len(media),
         }
@@ -3568,15 +3631,34 @@ class MediaLibraryKeeper(_PluginBase):
             return parts[1]
         return parts[0]
 
-    @staticmethod
-    def _capabilities() -> Dict[str, Any]:
+    def _capabilities(self) -> Dict[str, Any]:
+        ai_agent_ready, ai_agent_message = self._ai_agent_status()
         return {
             "emby_scan": True,
             "transfer_history_match": True,
             "storage_delete": True,
             "ai_suggestions": True,
+            "ai_agent_ready": ai_agent_ready,
+            "ai_agent_message": ai_agent_message,
             "notification": True,
         }
+
+    def _ai_resource_recognition_enabled(self) -> bool:
+        ai_agent_ready, _ = self._ai_agent_status()
+        return bool(self._config.get("ai_suggestions") and ai_agent_ready)
+
+    @staticmethod
+    def _ai_agent_status() -> Tuple[bool, str]:
+        if not getattr(settings, "AI_AGENT_ENABLE", False):
+            return False, "未配置智能助手，请先在系统设置中启用智能助手。"
+        provider = str(getattr(settings, "LLM_PROVIDER", "") or "").strip().lower()
+        model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
+        if not provider or not model:
+            return False, "未配置智能助手，请先配置 LLM 提供商和模型。"
+        api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+        if provider not in {"chatgpt", "github-copilot"} and not api_key:
+            return False, "未配置智能助手，请先配置 LLM API Key。"
+        return True, "智能助手已配置。"
 
     @staticmethod
     def _sum_target_size(targets: List[Dict[str, Any]]) -> int:

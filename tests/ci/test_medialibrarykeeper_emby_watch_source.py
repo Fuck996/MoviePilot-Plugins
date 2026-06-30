@@ -94,6 +94,11 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "定时任务会先扫描 Emby 媒体库" in source
     assert "扫描并生成批次" in source
     assert "mlk-rule-scan-btn" in source
+    assert "syncingLibraries" in source
+    assert "syncLibraries" in source
+    assert "/libraries/sync" in source
+    assert "同步媒体库列表" in source
+    assert "mediaservers: configDraft.value.mediaservers || []" in source
     assert "扫描与容量告警" not in source
     assert "立即按规则扫描" not in source
     assert "downloader_path_mappings" in source
@@ -102,7 +107,17 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "seed_candidates" in source
     assert "AI资源任务识别" in source
     assert "AI资源任务识别用于整理记录或 download hash 缺失时" in source
+    assert "aiAgentReady" in source
+    assert "updateAiSuggestions" in source
+    assert "未配置智能助手" in source
+    assert '@update:model-value="updateAiSuggestions"' in source
+    assert "visibleCapabilities" in source
     assert 'label="允许 AI 参与清理建议排序" disabled' not in source
+    config_source = Path("plugins.v2/medialibrarykeeper/src/components/Config.vue").read_text(encoding="utf-8")
+    assert "AI资源任务识别" in config_source
+    assert "updateAiSuggestions" in config_source
+    assert "未配置智能助手" in config_source
+    assert "允许 AI 参与清理建议排序" not in config_source
     assert "mlk-table-actions" in source
     assert "mediaVolumeCapacityText" in source
     assert "return `${name}（${formatBytes(volume.free)}）`" in source
@@ -274,10 +289,16 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_source_file_candidates_from_directory_mapping" in source
     assert "_select_source_candidates_with_ai" in source
     assert "LLMHelper.get_llm" in source
+    assert "_ai_resource_recognition_enabled" in source
+    assert "_ai_agent_status" in source
+    assert '"ai_agent_ready"' in source
+    assert '"ai_agent_message"' in source
+    assert '"ai_unavailable"' in source
     assert "ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}" in source
     assert "ai_resource_state={item.get('ai_resource_state') or '-'}" in source
     assert "无疑似源文件" in source
     assert "AI识别失败" in source
+
     assert "源文件候选" in source
     assert "get_agent_tools" in source
     assert "MediaLibraryKeeperSeedReviewTool" in source
@@ -337,6 +358,19 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "medialibrarykeeper_seed_review" in agent_tool
     assert "get_seed_review_context" in agent_tool
     assert "不会删除下载任务或媒体文件" in agent_tool
+
+
+def test_medialibrarykeeper_syncs_library_list_without_scanning_media_items() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    api_source = source.split("def get_api", 1)[1].split("def get_render_mode", 1)[0]
+    sync_source = source.split("def sync_libraries(", 1)[1].split("def create_cleanup_plan_api", 1)[0]
+
+    assert '"/libraries/sync"' in api_source
+    assert "sync_libraries_api" in source
+    assert "name_filters=mediaservers" in source
+    assert "_fetch_emby_libraries" in sync_source
+    assert "_fetch_emby_items" not in sync_source
+    assert '"library_synced_at"' in source
 
 
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:

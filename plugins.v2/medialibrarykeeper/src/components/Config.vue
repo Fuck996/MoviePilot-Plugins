@@ -20,12 +20,37 @@ const props = defineProps({
 const emit = defineEmits(['save', 'close'])
 const config = ref(toEditableConfig())
 const loadingOptions = ref(false)
+const notice = ref({
+  show: false,
+  text: '',
+  color: 'warning',
+})
 const mediaServerOptions = ref([])
 const downloaderOptions = ref([])
+const capabilities = ref({})
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
+const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true)
+const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。')
 
 function saveConfig() {
   emit('save', toPayloadConfig(config.value))
+}
+
+function showNotice(message, color = 'warning') {
+  notice.value = {
+    show: true,
+    text: message,
+    color,
+  }
+}
+
+function updateAiSuggestions(value) {
+  if (value && !aiAgentReady.value) {
+    config.value.ai_suggestions = false
+    showNotice(aiAgentMessage.value)
+    return
+  }
+  config.value.ai_suggestions = Boolean(value)
 }
 
 async function loadMediaServerOptions() {
@@ -34,6 +59,10 @@ async function loadMediaServerOptions() {
   try {
     const response = await props.api.get(`${pluginBase.value}/status`)
     const status = unwrapResponse(response) || {}
+    capabilities.value = status.capabilities || {}
+    if (!capabilities.value.ai_agent_ready) {
+      config.value.ai_suggestions = false
+    }
     mediaServerOptions.value = status.media_server_options || []
     downloaderOptions.value = status.downloader_options || []
   } finally {
@@ -85,10 +114,19 @@ onMounted(async () => {
         hint="自动读取 MoviePilot 已启用的 QB / Transmission；留空表示全部支持的下载器。"
         persistent-hint
       />
-      <VSwitch v-model="config.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
+      <VSwitch
+        :model-value="config.ai_suggestions"
+        color="primary"
+        inset
+        label="AI资源任务识别"
+        @update:model-value="updateAiSuggestions"
+      />
       <VSwitch v-model="config.default_delete_source" color="error" inset label="默认同时删除源文件" />
       <VSwitch v-model="config.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
     </div>
+    <VSnackbar v-model="notice.show" :color="notice.color" timeout="3200">
+      {{ notice.text }}
+    </VSnackbar>
   </div>
 </template>
 
