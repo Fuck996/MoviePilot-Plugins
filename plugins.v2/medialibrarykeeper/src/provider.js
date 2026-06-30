@@ -279,6 +279,7 @@ function compactSeedTask(task) {
     'task_size',
     'matched_downloader',
     'downloader_match_source',
+    'downloader_lookup_state',
     'source',
     'error',
   ])

@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.53"
+    plugin_version = "0.3.54"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2441,6 +2441,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "downloader_type": "",
                 "download_hash": download_hash,
                 "downloader_match_source": "history_hash",
+                "downloader_lookup_state": "history_hash_only",
                 "matched_paths": [self._clean_text(getattr(record, "dest", ""))],
                 "source": "transfer_history",
             })
@@ -2499,6 +2500,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "downloader_type": "",
                 "download_hash": download_hash,
                 "downloader_match_source": "history_hash",
+                "downloader_lookup_state": "history_hash_only",
                 "matched_paths": matched_paths,
                 "source": "download_history",
             })
@@ -2588,21 +2590,22 @@ class MediaLibraryKeeper(_PluginBase):
                 task.update({
                     "downloader": downloader,
                     "downloader_type": self._clean_text(getattr(service_info, "type", "")),
-                    "task_name": summary.get("name") or task.get("title") or download_hash,
+                    "task_name": summary.get("name"),
                     "save_path": summary.get("save_path"),
                     "task_state": summary.get("state"),
                     "task_size": summary.get("size"),
                     "matched_downloader": downloader,
                     "downloader_match_source": "configured_downloader",
+                    "downloader_lookup_state": "matched" if summary.get("name") else "matched_without_name",
                 })
                 logger.info(
                     f"媒体库管家保种任务识别：hash={download_hash}，downloader={downloader}，"
-                    f"task_name={task.get('task_name')}"
+                    f"task_name={task.get('task_name') or '-'}"
                 )
                 break
             if not task.get("matched_downloader"):
                 logger.warning(
-                    f"媒体库管家保种任务识别未命中配置下载器：hash={download_hash}，"
+                    f"媒体库管家保种任务未读取到配置下载器实时信息：hash={download_hash}，"
                     f"history_downloader={task.get('original_downloader') or '-'}，candidates={candidate_names}"
                 )
         return tasks

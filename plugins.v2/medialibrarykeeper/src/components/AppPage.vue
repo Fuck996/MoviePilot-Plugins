@@ -156,10 +156,22 @@ function downloadTaskName(task) {
   return task.matched_downloader || task.downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
 }
 function downloadTaskTitle(task) {
-  return task.task_name || '未在配置下载器中找到对应任务'
+  if (task.task_name) return task.task_name
+  if (downloadTaskMatched(task)) return '已定位下载任务，未获取到任务名'
+  return '未读取到配置下载器实时任务信息'
 }
 function downloadTaskMatched(task) {
   return task.downloader_match_source === 'configured_downloader' || Boolean(task.matched_downloader || task.task_name)
+}
+function downloadTaskStatusText(task) {
+  if (!downloadTaskMatched(task)) return '历史Hash'
+  return task.task_name ? '已找到' : '已定位'
+}
+function downloadTaskHint(task) {
+  if (downloadTaskMatched(task)) {
+    return task.task_name ? '' : '下载器接口已按 Hash 定位任务，但未返回任务名。'
+  }
+  return '当前批次只保存了历史 Hash，执行清理时会按 Hash 到配置下载器中尝试删除。'
 }
 function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
@@ -1465,13 +1477,14 @@ onUnmounted(() => {
               <div v-for="task in selectedPlanItem.download_tasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
                 <div class="mlk-target-head">
                   <VChip :color="downloadTaskMatched(task) ? 'success' : 'warning'" variant="tonal" size="small">
-                    {{ downloadTaskMatched(task) ? '已找到' : '历史Hash' }}
+                    {{ downloadTaskStatusText(task) }}
                   </VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
                   <VChip v-if="task.task_state" variant="tonal" size="small">{{ task.task_state }}</VChip>
                   <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
                 </div>
                 <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
+                <div v-if="downloadTaskHint(task)" class="text-caption text-medium-emphasis">{{ downloadTaskHint(task) }}</div>
                 <div v-if="!downloadTaskMatched(task) && task.title" class="text-caption text-medium-emphasis">历史记录：{{ task.title }}</div>
                 <div class="text-caption text-medium-emphasis">Hash：{{ task.download_hash }}</div>
                 <div v-if="task.save_path" class="text-caption text-medium-emphasis">保存目录：{{ task.save_path }}</div>

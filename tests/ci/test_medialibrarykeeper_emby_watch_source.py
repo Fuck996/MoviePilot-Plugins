@@ -137,6 +137,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert '"downloader": ""' in record_task_source
     assert '"downloader": ""' in history_task_source
     assert '"downloader_match_source": "history_hash"' in source
+    assert '"downloader_lookup_state": "history_hash_only"' in source
     assert 'key = str(task.get("download_hash") or "").lower()' in source
     assert 'module.remove_torrents(' in source
     assert 'downloader=downloader' in source
@@ -160,7 +161,9 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "module.get_torrents(**args)" in source
     assert '"ids": [download_hash]' in source
     assert '"downloader_match_source": "configured_downloader"' in source
+    assert '"downloader_lookup_state": "matched" if summary.get("name") else "matched_without_name"' in source
     assert '"task_name": summary.get("name")' in source
+    assert "媒体库管家保种任务未读取到配置下载器实时信息" in source
     assert "EventType.MessageAction" in source
     assert "MESSAGE_ACTION_CONFIRM_CLEANUP" in source
     assert "_confirm_cleanup_plan" in source
@@ -217,13 +220,18 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "original_downloader" in provider
     assert "downloadTaskTitle" in frontend
     assert "downloadTaskMatched" in frontend
+    assert "downloadTaskStatusText" in frontend
+    assert "downloadTaskHint" in frontend
     assert "历史Hash" in frontend
-    assert "未在配置下载器中找到对应任务" in frontend
+    assert "未读取到配置下载器实时任务信息" in frontend
+    assert "已定位下载任务，未获取到任务名" in frontend
+    assert "执行清理时会按 Hash 到配置下载器中尝试删除" in frontend
     assert "保存目录：" in frontend
     assert "'task_name'" in provider
     assert "'save_path'" in provider
     assert "'task_state'" in provider
     assert "'downloader_match_source'" in provider
+    assert "'downloader_lookup_state'" in provider
     assert "_attach_candidate_downloaders" in source
     assert "candidate_downloaders" in frontend
     assert "'candidate_downloaders'" in provider
