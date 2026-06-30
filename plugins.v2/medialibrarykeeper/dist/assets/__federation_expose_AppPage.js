@@ -715,11 +715,13 @@ function cleanupRecordStats(item) {
 
 function queueStatusColor(item) {
   if (item.status === 'running') return 'info'
+  if (item.status === 'skipped') return 'warning'
   return 'warning'
 }
 
 function queueStatusText(item) {
   if (item.status === 'running') return '执行中'
+  if (item.status === 'skipped') return '跳过'
   return '排队中'
 }
 
@@ -2122,11 +2124,13 @@ return (_ctx, _cache) => {
                           ], -1)),
                           _createVNode(_component_VDataTable, {
                             headers: [
+                  { title: '媒体名称', key: 'title', minWidth: 180 },
+                  { title: '状态', key: 'status', width: 100 },
+                  { title: '所属批次', key: 'batch_id', width: 150 },
+                  { title: '所属目录', key: 'directory', minWidth: 140 },
+                  { title: '包含文件', key: 'file_count', width: 100 },
+                  { title: '释放容量', key: 'estimated_reclaim_size', width: 120 },
                   { title: '加入时间', key: 'created_at', width: 168 },
-                  { title: '状态', key: 'status', width: 110 },
-                  { title: '媒体', key: 'ready_count', width: 110 },
-                  { title: '预计释放', key: 'estimated_reclaim_size', width: 120 },
-                  { title: '说明', key: 'message' },
                 ],
                             items: cleanupQueueRows.value,
                             density: "compact"
@@ -2143,8 +2147,11 @@ return (_ctx, _cache) => {
                                 _: 2
                               }, 1032, ["color"])
                             ]),
-                            "item.ready_count": _withCtx(({ item }) => [
-                              _createTextVNode(_toDisplayString(item.ready_count || 0) + "/" + _toDisplayString(item.item_count || 0), 1)
+                            "item.directory": _withCtx(({ item }) => [
+                              _createTextVNode(_toDisplayString(item.directory || '-'), 1)
+                            ]),
+                            "item.file_count": _withCtx(({ item }) => [
+                              _createTextVNode(_toDisplayString(item.file_count || 0), 1)
                             ]),
                             "item.estimated_reclaim_size": _withCtx(({ item }) => [
                               _createTextVNode(_toDisplayString(_unref(formatBytes)(item.estimated_reclaim_size)), 1)
@@ -3558,6 +3565,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-ad3700ad"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-ce706dca"]]);
 
 export { AppPage as default };

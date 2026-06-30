@@ -40,14 +40,14 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.8"' in source
+    assert 'plugin_version = "1.0.9"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.8"
+    assert meta["version"] == "1.0.9"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.8"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.8"]
+    assert plugin_package["version"] == "1.0.9"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.9"]
     assert "首次启用" in meta["history"]["v1.0.1"]
-    assert "单一根目录" in meta["history"]["v1.0.8"]
+    assert "清理队列" in meta["history"]["v1.0.9"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -221,6 +221,10 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
 
     assert "DATA_KEY_CLEANUP_QUEUE" in source
     assert "_enqueue_cleanup_plan" in source
+    assert "_queue_media_status" in source
+    assert '"directory": media.get("volume_name") or media.get("volume_summary") or ""' in source
+    assert '"file_count": len(delete_targets)' in source
+    assert '"estimated_reclaim_size": self._sum_target_size(delete_targets) or int(media.get("size") or 0)' in source
     assert "threading.Thread" in source
     assert "deleted_media_files" in source
     assert "deleted_scraping_files" in source
@@ -396,7 +400,23 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend
     assert "cleanupQueueRows" in frontend
+    assert "{ title: '媒体名称', key: 'title'" in frontend
+    assert "{ title: '所属批次', key: 'batch_id'" in frontend
+    assert "{ title: '所属目录', key: 'directory'" in frontend
+    assert "{ title: '包含文件', key: 'file_count'" in frontend
+    assert "{ title: '释放容量', key: 'estimated_reclaim_size'" in frontend
+    queue_table_source = frontend.split('<div class="text-subtitle-1 font-weight-medium">清理队列</div>', 1)[1].split('<VDataTable', 2)[1].split('</VDataTable>', 1)[0]
+    assert "ready_count" not in queue_table_source
+    assert "item_count" not in queue_table_source
     assert "compactQueueItem" in provider
+    assert "'queue_id'" in provider
+    assert "'media_id'" in provider
+    assert "'title'" in provider
+    assert "'directory'" in provider
+    assert "'file_count'" in provider
+    compact_queue_source = provider.split("function compactQueueItem", 1)[1].split("function compactPlan", 1)[0]
+    assert "'ready_count'" not in compact_queue_source
+    assert "'item_count'" not in compact_queue_source
     assert "deleted_targets" in provider
     assert "return any(self._matches_cleanup_rule(item, rule) for rule in rules)" in source
     cleanup_buttons_source = source.split("def _cleanup_batch_buttons", 1)[1].split("def _cleanup_page_buttons", 1)[0]

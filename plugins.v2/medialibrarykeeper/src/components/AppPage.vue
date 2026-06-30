@@ -489,11 +489,13 @@ function cleanupRecordStats(item) {
 
 function queueStatusColor(item) {
   if (item.status === 'running') return 'info'
+  if (item.status === 'skipped') return 'warning'
   return 'warning'
 }
 
 function queueStatusText(item) {
   if (item.status === 'running') return '执行中'
+  if (item.status === 'skipped') return '跳过'
   return '排队中'
 }
 
@@ -1327,11 +1329,13 @@ onUnmounted(() => {
               </div>
               <VDataTable
                 :headers="[
+                  { title: '媒体名称', key: 'title', minWidth: 180 },
+                  { title: '状态', key: 'status', width: 100 },
+                  { title: '所属批次', key: 'batch_id', width: 150 },
+                  { title: '所属目录', key: 'directory', minWidth: 140 },
+                  { title: '包含文件', key: 'file_count', width: 100 },
+                  { title: '释放容量', key: 'estimated_reclaim_size', width: 120 },
                   { title: '加入时间', key: 'created_at', width: 168 },
-                  { title: '状态', key: 'status', width: 110 },
-                  { title: '媒体', key: 'ready_count', width: 110 },
-                  { title: '预计释放', key: 'estimated_reclaim_size', width: 120 },
-                  { title: '说明', key: 'message' },
                 ]"
                 :items="cleanupQueueRows"
                 density="compact"
@@ -1341,7 +1345,8 @@ onUnmounted(() => {
                     {{ queueStatusText(item) }}
                   </VChip>
                 </template>
-                <template #item.ready_count="{ item }">{{ item.ready_count || 0 }}/{{ item.item_count || 0 }}</template>
+                <template #item.directory="{ item }">{{ item.directory || '-' }}</template>
+                <template #item.file_count="{ item }">{{ item.file_count || 0 }}</template>
                 <template #item.estimated_reclaim_size="{ item }">{{ formatBytes(item.estimated_reclaim_size) }}</template>
               </VDataTable>
             </VSheet>

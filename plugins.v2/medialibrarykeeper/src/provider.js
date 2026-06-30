@@ -246,14 +246,19 @@ function compactHistoryItem(item) {
 function compactQueueItem(item) {
   return pickFields(item, [
     'id',
+    'queue_id',
     'plan_id',
     'batch_id',
+    'media_id',
+    'title',
+    'type',
+    'type_label',
     'created_at',
     'started_at',
     'status',
     'message',
-    'item_count',
-    'ready_count',
+    'directory',
+    'file_count',
     'estimated_reclaim_size',
     'delete_source',
   ])

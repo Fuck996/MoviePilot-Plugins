@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.8"
+    plugin_version = "1.0.9"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -702,23 +702,40 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _queue_status(self) -> List[Dict[str, Any]]:
         queue = self._load_cleanup_queue()
-        return [
-            {
-                "id": item.get("id"),
-                "plan_id": item.get("plan_id"),
-                "batch_id": item.get("batch_id"),
-                "created_at": item.get("created_at"),
-                "started_at": item.get("started_at"),
-                "status": item.get("status"),
-                "message": item.get("message"),
-                "item_count": item.get("item_count") or 0,
-                "ready_count": item.get("ready_count") or 0,
-                "estimated_reclaim_size": item.get("estimated_reclaim_size") or 0,
-                "delete_source": bool(item.get("delete_source")),
-            }
-            for item in queue
-            if item.get("status") in {"queued", "running"}
-        ]
+        rows: List[Dict[str, Any]] = []
+        for queue_item in queue:
+            if queue_item.get("status") not in {"queued", "running"}:
+                continue
+            plan = queue_item.get("plan") or {}
+            for index, media in enumerate(plan.get("items") or []):
+                rows.append(self._queue_media_status(queue_item, media, index))
+        return rows
+
+    def _queue_media_status(self, queue_item: Dict[str, Any], media: Dict[str, Any], index: int) -> Dict[str, Any]:
+        status = queue_item.get("status")
+        message = queue_item.get("message")
+        if media.get("status") != "ready":
+            status = "skipped"
+            message = media.get("message") or "不在本次执行范围"
+        delete_targets = media.get("delete_targets") or []
+        return {
+            "id": f"{queue_item.get('id')}-{media.get('media_id') or index}",
+            "queue_id": queue_item.get("id"),
+            "plan_id": queue_item.get("plan_id"),
+            "batch_id": queue_item.get("batch_id"),
+            "media_id": media.get("media_id"),
+            "title": media.get("title"),
+            "type": media.get("type"),
+            "type_label": media.get("type_label"),
+            "created_at": queue_item.get("created_at"),
+            "started_at": queue_item.get("started_at"),
+            "status": status,
+            "message": message,
+            "directory": media.get("volume_name") or media.get("volume_summary") or "",
+            "file_count": len(delete_targets),
+            "estimated_reclaim_size": self._sum_target_size(delete_targets) or int(media.get("size") or 0),
+            "delete_source": bool(queue_item.get("delete_source")),
+        }
 
     def get_seed_review_context(self, limit: int = 20) -> Dict[str, Any]:
         pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
