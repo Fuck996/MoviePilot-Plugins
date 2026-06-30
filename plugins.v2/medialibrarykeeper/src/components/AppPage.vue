@@ -153,10 +153,13 @@ function planItemStatusColor(item) {
 }
 function downloadTaskName(task) {
   const candidates = Array.isArray(task.candidate_downloaders) ? task.candidate_downloaders.filter(Boolean) : []
-  return task.downloader || task.original_downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
+  return task.matched_downloader || task.downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
 }
 function downloadTaskTitle(task) {
-  return task.task_name || task.title || task.download_hash || '-'
+  return task.task_name || '未在配置下载器中找到对应任务'
+}
+function downloadTaskMatched(task) {
+  return task.downloader_match_source === 'configured_downloader' || Boolean(task.matched_downloader || task.task_name)
 }
 function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
@@ -1461,12 +1464,15 @@ onUnmounted(() => {
             <VSheet v-if="selectedPlanItem.download_tasks?.length" border rounded class="mlk-target-row">
               <div v-for="task in selectedPlanItem.download_tasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
                 <div class="mlk-target-head">
-                  <VChip color="success" variant="tonal" size="small">已找到</VChip>
+                  <VChip :color="downloadTaskMatched(task) ? 'success' : 'warning'" variant="tonal" size="small">
+                    {{ downloadTaskMatched(task) ? '已找到' : '历史Hash' }}
+                  </VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
                   <VChip v-if="task.task_state" variant="tonal" size="small">{{ task.task_state }}</VChip>
                   <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
                 </div>
                 <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
+                <div v-if="!downloadTaskMatched(task) && task.title" class="text-caption text-medium-emphasis">历史记录：{{ task.title }}</div>
                 <div class="text-caption text-medium-emphasis">Hash：{{ task.download_hash }}</div>
                 <div v-if="task.save_path" class="text-caption text-medium-emphasis">保存目录：{{ task.save_path }}</div>
               </div>

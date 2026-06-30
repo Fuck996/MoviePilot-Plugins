@@ -134,6 +134,9 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "SUPPORTED_DOWNLOADER_TYPES" not in record_task_source
     assert "SUPPORTED_DOWNLOADER_TYPES" not in history_task_source
     assert '"original_downloader": downloader' in source
+    assert '"downloader": ""' in record_task_source
+    assert '"downloader": ""' in history_task_source
+    assert '"downloader_match_source": "history_hash"' in source
     assert 'key = str(task.get("download_hash") or "").lower()' in source
     assert 'module.remove_torrents(' in source
     assert 'downloader=downloader' in source
@@ -152,8 +155,11 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "title.lower() in self._clean_text(getattr(record, \"title\", \"\")).lower()" not in source
     assert "_enrich_download_tasks_from_configured_downloaders" in source
     assert "_find_downloader_torrent" in source
+    assert "_query_downloader_torrents" in source
     assert "_downloader_torrent_summary" in source
-    assert "module.get_torrents(ids=download_hash)" in source
+    assert "module.get_torrents(**args)" in source
+    assert '"ids": [download_hash]' in source
+    assert '"downloader_match_source": "configured_downloader"' in source
     assert '"task_name": summary.get("name")' in source
     assert "EventType.MessageAction" in source
     assert "MESSAGE_ACTION_CONFIRM_CLEANUP" in source
@@ -178,6 +184,9 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "NotificationType.MediaServer" not in notify_batch_source
     assert "页面：" not in notify_batch_source
     assert "items[:8]" not in notify_batch_source
+    assert "items[:12]" in notify_batch_source
+    assert "清理明细：" in notify_batch_source
+    assert "未配置 MoviePilot 外部访问地址，无法生成审核跳转按钮。" in notify_batch_source
     assert "媒体库管家发送清理通知" in source
     assert "媒体库管家手动检查未发送清理批次通知" in source
     assert 'status = "record_missing"' in source
@@ -206,10 +215,14 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
     assert "downloadTaskTitle" in frontend
+    assert "downloadTaskMatched" in frontend
+    assert "历史Hash" in frontend
+    assert "未在配置下载器中找到对应任务" in frontend
     assert "保存目录：" in frontend
     assert "'task_name'" in provider
     assert "'save_path'" in provider
     assert "'task_state'" in provider
+    assert "'downloader_match_source'" in provider
     assert "_attach_candidate_downloaders" in source
     assert "candidate_downloaders" in frontend
     assert "'candidate_downloaders'" in provider

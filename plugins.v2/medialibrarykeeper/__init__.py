@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.51"
+    plugin_version = "0.3.52"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2436,10 +2436,11 @@ class MediaLibraryKeeper(_PluginBase):
             tasks.append({
                 "record_id": getattr(record, "id", None),
                 "title": self._clean_text(getattr(record, "title", "")),
-                "downloader": downloader,
+                "downloader": "",
                 "original_downloader": downloader,
                 "downloader_type": "",
                 "download_hash": download_hash,
+                "downloader_match_source": "history_hash",
                 "matched_paths": [self._clean_text(getattr(record, "dest", ""))],
                 "source": "transfer_history",
             })
@@ -2493,10 +2494,11 @@ class MediaLibraryKeeper(_PluginBase):
             tasks.append({
                 "record_id": record_id,
                 "title": self._clean_text(getattr(item, "title", "")) or self._clean_text(getattr(item, "torrentname", "")) or title,
-                "downloader": downloader,
+                "downloader": "",
                 "original_downloader": downloader,
                 "downloader_type": "",
                 "download_hash": download_hash,
+                "downloader_match_source": "history_hash",
                 "matched_paths": matched_paths,
                 "source": "download_history",
             })
@@ -2569,10 +2571,12 @@ class MediaLibraryKeeper(_PluginBase):
         if not tasks:
             return tasks
         candidates = self._configured_seed_cleanup_downloaders(DownloaderHelper())
+        candidate_names = [downloader for downloader, _ in candidates]
         for task in tasks:
             download_hash = self._clean_text(task.get("download_hash"))
             if not download_hash:
                 continue
+            task["candidate_downloaders"] = candidate_names
             for downloader, service_info in candidates:
                 module = getattr(service_info, "module", None)
                 if not module or not hasattr(module, "get_torrents"):
@@ -2589,35 +2593,50 @@ class MediaLibraryKeeper(_PluginBase):
                     "task_state": summary.get("state"),
                     "task_size": summary.get("size"),
                     "matched_downloader": downloader,
+                    "downloader_match_source": "configured_downloader",
                 })
                 logger.info(
                     f"媒体库管家保种任务识别：hash={download_hash}，downloader={downloader}，"
                     f"task_name={task.get('task_name')}"
                 )
                 break
+            if not task.get("matched_downloader"):
+                logger.warning(
+                    f"媒体库管家保种任务识别未命中配置下载器：hash={download_hash}，"
+                    f"history_downloader={task.get('original_downloader') or '-'}，candidates={candidate_names}"
+                )
         return tasks
 
     def _find_downloader_torrent(self, module: Any, download_hash: str) -> Optional[Any]:
+        clean_hash = download_hash.lower()
+        for args, targeted in [
+            ({"ids": download_hash}, True),
+            ({"ids": [download_hash]}, True),
+            ({}, False),
+        ]:
+            torrents = self._query_downloader_torrents(module, download_hash, args)
+            if not torrents:
+                continue
+            for torrent in torrents:
+                torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
+                if torrent_hash == clean_hash or (targeted and not torrent_hash and len(torrents) == 1):
+                    return torrent
+        return None
+
+    def _query_downloader_torrents(self, module: Any, download_hash: str, args: Dict[str, Any]) -> List[Any]:
         try:
-            result = module.get_torrents(ids=download_hash)
+            result = module.get_torrents(**args)
         except Exception as err:
-            logger.warning(f"媒体库管家保种任务识别读取下载器失败：hash={download_hash}，error={err}")
-            return None
+            logger.warning(f"媒体库管家保种任务识别读取下载器失败：hash={download_hash}，args={args}，error={err}")
+            return []
         if isinstance(result, tuple):
             torrents, has_error = result
             if has_error:
-                logger.warning(f"媒体库管家保种任务识别读取下载器返回错误：hash={download_hash}")
-                return None
+                logger.warning(f"媒体库管家保种任务识别读取下载器返回错误：hash={download_hash}，args={args}")
+                return []
         else:
             torrents = result
-        if not torrents:
-            return None
-        clean_hash = download_hash.lower()
-        for torrent in torrents:
-            torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
-            if not torrent_hash or torrent_hash == clean_hash:
-                return torrent
-        return None
+        return torrents if isinstance(torrents, list) else list(torrents or [])
 
     def _downloader_torrent_summary(self, torrent: Any) -> Dict[str, Any]:
         return {
@@ -2864,14 +2883,28 @@ class MediaLibraryKeeper(_PluginBase):
         items = plan.get("items") or []
         recorded_count = len([item for item in items if item.get("matched_transfer_records")])
         missing_count = max(0, len(items) - recorded_count)
+        link = self._cleanup_page_url()
         lines = [
             f"批次：{plan.get('batch_id') or plan.get('id')}",
             f"命中媒体：{len(items)} 个，有记录：{recorded_count} 个，记录丢失：{missing_count} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
-            "请打开媒体库管家审核删除目标后确认执行。",
+            "请在媒体库管家审核删除目标后确认执行。",
         ]
+        lines.append("清理明细：")
+        for item in items[:12]:
+            title = self._clean_text(item.get("title")) or "-"
+            type_label = self._clean_text(item.get("type_label")) or ("电影" if item.get("type") == "movie" else "剧集")
+            record_label = "有记录" if item.get("matched_transfer_records") else "记录丢失"
+            target_count = len(item.get("delete_targets") or [])
+            lines.append(f"- {title} / {type_label} / {self._human_size(item.get('size'))} / {record_label} / 删除目标 {target_count}")
+        if len(items) > 12:
+            lines.append(f"... 另有 {len(items) - 12} 个媒体")
         if missing_count:
             lines.append("记录丢失条目需要在页面核对目录映射和源文件候选。")
+        if link:
+            lines.append("可点击下方按钮打开系统审核页面。")
+        else:
+            lines.append("未配置 MoviePilot 外部访问地址，无法生成审核跳转按钮。")
         self._post_cleanup_message(
             title="【媒体库管家】清理批次待确认",
             text="\n".join(lines),
@@ -2899,19 +2932,19 @@ class MediaLibraryKeeper(_PluginBase):
         self.post_message(**message_kwargs)
 
     def _cleanup_batch_buttons(self, plan: Dict[str, Any]) -> List[List[Dict[str, str]]]:
-        buttons = []
+        rows: List[List[Dict[str, str]]] = []
+        link = self._cleanup_page_url()
+        if link:
+            rows.append([{"text": "打开清理计划", "url": link}])
         if self._plan_ready_count(plan) > 0:
-            buttons.append({
+            rows.append([{
                 "text": "确认执行",
                 "callback_data": (
                     f"[PLUGIN]{self.__class__.__name__}|"
                     f"{self.MESSAGE_ACTION_CONFIRM_CLEANUP}{plan.get('id')}"
                 ),
-            })
-        link = self._cleanup_page_url()
-        if link:
-            buttons.append({"text": "打开清理计划", "url": link})
-        return [buttons] if buttons else []
+            }])
+        return rows
 
     def _cleanup_page_buttons(self) -> List[List[Dict[str, str]]]:
         link = self._cleanup_page_url()
