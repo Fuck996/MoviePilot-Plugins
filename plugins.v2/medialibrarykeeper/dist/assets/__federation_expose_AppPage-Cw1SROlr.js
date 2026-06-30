@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-CB4W9Gt-.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-DFQMfcxp.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,vShow:_vShow,withDirectives:_withDirectives,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps} = await importShared('vue');
 
@@ -155,7 +155,7 @@ const _hoisted_103 = { class: "mb-5" };
 const _hoisted_104 = { class: "mlk-target-head" };
 const _hoisted_105 = { class: "text-body-2" };
 const _hoisted_106 = {
-  key: 1,
+  key: 2,
   class: "mlk-target-list"
 };
 const _hoisted_107 = { class: "mlk-target-head" };
@@ -173,7 +173,7 @@ const _hoisted_111 = {
   class: "text-caption text-medium-emphasis"
 };
 const _hoisted_112 = {
-  key: 2,
+  key: 3,
   class: "mt-5"
 };
 const _hoisted_113 = { class: "mlk-target-head" };
@@ -181,7 +181,7 @@ const _hoisted_114 = { class: "text-body-2" };
 const _hoisted_115 = { class: "text-caption text-medium-emphasis" };
 const _hoisted_116 = { class: "text-caption text-medium-emphasis" };
 const _hoisted_117 = {
-  key: 3,
+  key: 4,
   class: "mt-5"
 };
 const _hoisted_118 = { class: "mlk-target-head" };
@@ -298,6 +298,14 @@ const pendingPlanStats = computed(() => pendingPlanItems.value.reduce((stats, it
   stats.size += Number(item.size || 0);
   return stats
 }, { movies: 0, series: 0, size: 0 }));
+const pendingPlanRecordStats = computed(() => pendingPlanItems.value.reduce((stats, item) => {
+  if (item.matched_transfer_records?.length) {
+    stats.recorded += 1;
+  } else {
+    stats.missing += 1;
+  }
+  return stats
+}, { recorded: 0, missing: 0 }));
 const historyRows = computed(() => status.value.history || []);
 const capabilities = computed(() => status.value.capabilities || {});
 const mediaServerOptions = computed(() => status.value.media_server_options || []);
@@ -333,18 +341,7 @@ function resolveImageUrl(url) {
   return `${String(baseURL).replace(/\/$/, '')}/${String(url).replace(/^\//, '')}`
 }
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0));
-const planReady = computed(() => pendingPlan.value?.status === 'ready');
 const planExecutable = computed(() => Number(pendingPlan.value?.ready_count || 0) > 0);
-const planStatusText = computed(() => {
-  if (planReady.value) return '可执行'
-  if (planExecutable.value) return '部分可执行'
-  return '需处理'
-});
-const planStatusColor = computed(() => {
-  if (planReady.value) return 'success'
-  if (planExecutable.value) return 'warning'
-  return 'error'
-});
 function planItemStatusText(item) {
   if (item.matched_transfer_records?.length) return '有记录'
   if (item.status === 'record_missing' || item.delete_targets?.length) return '记录丢失'
@@ -1642,10 +1639,23 @@ return (_ctx, _cache) => {
                                   color: "primary"
                                 }, {
                                   default: _withCtx(() => [
-                                    _createTextVNode("可执行 " + _toDisplayString(pendingPlan.value.ready_count || 0) + "/" + _toDisplayString(pendingPlanItems.value.length), 1)
+                                    _createTextVNode("有记录 " + _toDisplayString(pendingPlanRecordStats.value.recorded) + "/" + _toDisplayString(pendingPlanItems.value.length), 1)
                                   ]),
                                   _: 1
                                 }),
+                                (pendingPlanRecordStats.value.missing)
+                                  ? (_openBlock(), _createBlock(_component_VChip, {
+                                      key: 0,
+                                      size: "small",
+                                      variant: "tonal",
+                                      color: "warning"
+                                    }, {
+                                      default: _withCtx(() => [
+                                        _createTextVNode("记录丢失 " + _toDisplayString(pendingPlanRecordStats.value.missing), 1)
+                                      ]),
+                                      _: 1
+                                    }))
+                                  : _createCommentVNode("", true),
                                 _createVNode(_component_VChip, {
                                   size: "small",
                                   variant: "tonal",
@@ -1655,17 +1665,7 @@ return (_ctx, _cache) => {
                                     _createTextVNode("预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value.estimated_reclaim_size || pendingPlanStats.value.size)), 1)
                                   ]),
                                   _: 1
-                                }),
-                                _createVNode(_component_VChip, {
-                                  color: planStatusColor.value,
-                                  size: "small",
-                                  variant: "tonal"
-                                }, {
-                                  default: _withCtx(() => [
-                                    _createTextVNode(_toDisplayString(planStatusText.value), 1)
-                                  ]),
-                                  _: 1
-                                }, 8, ["color"])
+                                })
                               ])
                             ]),
                             _createElementVNode("div", _hoisted_54, [
@@ -2510,6 +2510,20 @@ return (_ctx, _cache) => {
                     (selectedPlanItem.value.message)
                       ? (_openBlock(), _createElementBlock("div", _hoisted_102, _toDisplayString(selectedPlanItem.value.message), 1))
                       : _createCommentVNode("", true),
+                    (selectedPlanItem.value.ai_resource_message && !selectedPlanItem.value.ai_resource_candidates?.length)
+                      ? (_openBlock(), _createBlock(_component_VAlert, {
+                          key: 1,
+                          type: "info",
+                          variant: "tonal",
+                          density: "comfortable",
+                          class: "mb-3"
+                        }, {
+                          default: _withCtx(() => [
+                            _createTextVNode(" AI资源任务识别：" + _toDisplayString(selectedPlanItem.value.ai_resource_message), 1)
+                          ]),
+                          _: 1
+                        }))
+                      : _createCommentVNode("", true),
                     _createElementVNode("div", _hoisted_103, [
                       _cache[83] || (_cache[83] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "下载器任务", -1)),
                       (selectedPlanItem.value.download_tasks?.length)
@@ -2749,7 +2763,7 @@ return (_ctx, _cache) => {
                       : _createCommentVNode("", true),
                     (!selectedPlanItem.value.delete_targets?.length && !selectedPlanItem.value.seed_candidates?.length && !selectedPlanItem.value.ai_resource_candidates?.length)
                       ? (_openBlock(), _createBlock(_component_VEmptyState, {
-                          key: 4,
+                          key: 5,
                           icon: "mdi-file-search-outline",
                           title: "没有可审核的删除目标"
                         }))
@@ -3157,6 +3171,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-e785ee5a"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-fb1acfa4"]]);
 
 export { AppPage as default };

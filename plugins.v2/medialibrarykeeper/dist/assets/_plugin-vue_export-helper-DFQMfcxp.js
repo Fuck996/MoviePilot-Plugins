@@ -153,6 +153,8 @@ function compactPlan(plan) {
         'volumes',
         'status',
         'message',
+        'ai_resource_state',
+        'ai_resource_message',
       ]),
       matched_transfer_records: (item.matched_transfer_records || []).map(record => pickFields(record, [
         'record_id',
