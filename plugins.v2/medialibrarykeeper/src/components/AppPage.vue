@@ -108,7 +108,10 @@ const pendingPlanRecordStats = computed(() => pendingPlanItems.value.reduce((sta
 }, { recorded: 0, missing: 0 }))
 const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
-const visibleCapabilities = computed(() => Object.fromEntries(Object.entries(capabilities.value).filter(([, value]) => typeof value === 'boolean')))
+const hiddenCapabilityKeys = new Set(['ai_agent_ready'])
+const visibleCapabilities = computed(() => Object.fromEntries(
+  Object.entries(capabilities.value).filter(([key, value]) => typeof value === 'boolean' && !hiddenCapabilityKeys.has(key)),
+))
 const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true)
 const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。')
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
