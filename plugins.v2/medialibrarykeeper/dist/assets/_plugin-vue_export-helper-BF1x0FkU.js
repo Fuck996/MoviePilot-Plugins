@@ -30,6 +30,7 @@ function createDefaultConfig() {
     mediaservers: [],
     downloaders: [],
     path_mappings: [],
+    downloader_path_mappings: [],
     delete_seed_tasks: false,
     library_names: [],
     cleanup_libraries: [],
@@ -150,8 +151,21 @@ function compactPlan(plan) {
         'message',
       ]),
       delete_targets: (item.delete_targets || []).map(compactDeleteTarget),
+      seed_candidates: (item.seed_candidates || []).map(compactSeedCandidate),
     })),
   }
+}
+
+function compactSeedCandidate(candidate) {
+  return pickFields(candidate, [
+    'title',
+    'media_id',
+    'downloader',
+    'source_path',
+    'downloader_path',
+    'reason',
+    'status',
+  ])
 }
 
 function compactDeleteTarget(target) {
@@ -245,6 +259,7 @@ function cloneConfig(config) {
   const cloned = JSON.parse(JSON.stringify({ ...createDefaultConfig(), ...(config || {}) }));
   cloned.library_names = [];
   cloned.path_mappings = normalizePathMappings(config?.path_mappings ?? cloned.path_mappings);
+  cloned.downloader_path_mappings = normalizeDownloaderPathMappings(config?.downloader_path_mappings ?? cloned.downloader_path_mappings);
   cloned.cleanup_rules = normalizeCleanupRules(config || {}, cloned);
   const firstRule = cloned.cleanup_rules[0] || createDefaultCleanupRule();
   cloned.cleanup_operator = firstRule.operator;
@@ -264,6 +279,17 @@ function normalizePathMappings(mappings) {
       mp_path: normalizePathText(mapping?.mp_path),
     }))
     .filter(mapping => mapping.emby_path && mapping.mp_path)
+}
+
+function normalizeDownloaderPathMappings(mappings) {
+  if (!Array.isArray(mappings)) return []
+  return mappings
+    .map(mapping => ({
+      downloader: String(mapping?.downloader || '').trim(),
+      downloader_path: normalizePathText(mapping?.downloader_path),
+      resource_path: normalizePathText(mapping?.resource_path),
+    }))
+    .filter(mapping => mapping.downloader && mapping.downloader_path && mapping.resource_path)
 }
 
 function normalizePathText(path) {

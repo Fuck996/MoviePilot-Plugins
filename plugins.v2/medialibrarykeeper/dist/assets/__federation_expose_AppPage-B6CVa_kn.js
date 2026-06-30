@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-0rH5obXg.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-BF1x0FkU.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,vShow:_vShow,withDirectives:_withDirectives,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps} = await importShared('vue');
 
@@ -102,72 +102,82 @@ const _hoisted_62 = { class: "mlk-form-grid" };
 const _hoisted_63 = { class: "mlk-settings-group" };
 const _hoisted_64 = { class: "mlk-section-header" };
 const _hoisted_65 = { class: "mlk-settings-group" };
-const _hoisted_66 = { class: "mlk-switch-grid" };
+const _hoisted_66 = { class: "mlk-section-header" };
 const _hoisted_67 = { class: "mlk-settings-group" };
-const _hoisted_68 = { class: "mlk-section-header" };
-const _hoisted_69 = { class: "mlk-rule-title" };
-const _hoisted_70 = { class: "mlk-rule-grid" };
-const _hoisted_71 = { class: "mlk-settings-actions" };
-const _hoisted_72 = { class: "mlk-detail-layout" };
-const _hoisted_73 = { class: "mlk-detail-aside" };
-const _hoisted_74 = { class: "mlk-detail-poster" };
-const _hoisted_75 = {
+const _hoisted_68 = { class: "mlk-switch-grid" };
+const _hoisted_69 = { class: "mlk-settings-group" };
+const _hoisted_70 = { class: "mlk-section-header" };
+const _hoisted_71 = { class: "mlk-rule-title" };
+const _hoisted_72 = { class: "mlk-rule-grid" };
+const _hoisted_73 = { class: "mlk-settings-actions" };
+const _hoisted_74 = { class: "mlk-detail-layout" };
+const _hoisted_75 = { class: "mlk-detail-aside" };
+const _hoisted_76 = { class: "mlk-detail-poster" };
+const _hoisted_77 = {
   key: 1,
   class: "mlk-poster-fallback"
 };
-const _hoisted_76 = { class: "mlk-detail-aside-info" };
-const _hoisted_77 = { class: "mlk-detail-aside-row" };
-const _hoisted_78 = { class: "mlk-detail-aside-row" };
+const _hoisted_78 = { class: "mlk-detail-aside-info" };
 const _hoisted_79 = { class: "mlk-detail-aside-row" };
 const _hoisted_80 = { class: "mlk-detail-aside-row" };
 const _hoisted_81 = { class: "mlk-detail-aside-row" };
-const _hoisted_82 = { class: "mlk-detail-content" };
-const _hoisted_83 = { class: "mlk-detail-head" };
-const _hoisted_84 = { class: "text-h6 font-weight-bold" };
-const _hoisted_85 = { class: "text-body-2 text-medium-emphasis" };
-const _hoisted_86 = { class: "mlk-chip-row" };
-const _hoisted_87 = { class: "mlk-overview" };
-const _hoisted_88 = { class: "mlk-detail-grid" };
-const _hoisted_89 = { class: "text-caption text-medium-emphasis" };
-const _hoisted_90 = { class: "mlk-detail-wide" };
-const _hoisted_91 = {
+const _hoisted_82 = { class: "mlk-detail-aside-row" };
+const _hoisted_83 = { class: "mlk-detail-aside-row" };
+const _hoisted_84 = { class: "mlk-detail-content" };
+const _hoisted_85 = { class: "mlk-detail-head" };
+const _hoisted_86 = { class: "text-h6 font-weight-bold" };
+const _hoisted_87 = { class: "text-body-2 text-medium-emphasis" };
+const _hoisted_88 = { class: "mlk-chip-row" };
+const _hoisted_89 = { class: "mlk-overview" };
+const _hoisted_90 = { class: "mlk-detail-grid" };
+const _hoisted_91 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_92 = { class: "mlk-detail-wide" };
+const _hoisted_93 = {
   key: 0,
   class: "mlk-detail-wide"
 };
-const _hoisted_92 = {
+const _hoisted_94 = {
   key: 1,
   class: "mlk-detail-wide"
 };
-const _hoisted_93 = { class: "mlk-chip-row" };
-const _hoisted_94 = { class: "mlk-detail-actions" };
-const _hoisted_95 = { class: "text-subtitle-2 mb-3" };
-const _hoisted_96 = {
+const _hoisted_95 = { class: "mlk-chip-row" };
+const _hoisted_96 = { class: "mlk-detail-actions" };
+const _hoisted_97 = { class: "text-subtitle-2 mb-3" };
+const _hoisted_98 = {
   key: 0,
   class: "mlk-target-list"
 };
-const _hoisted_97 = { class: "mlk-target-head" };
-const _hoisted_98 = { class: "text-body-2" };
-const _hoisted_99 = {
+const _hoisted_99 = { class: "mlk-target-head" };
+const _hoisted_100 = { class: "text-body-2" };
+const _hoisted_101 = {
   key: 0,
   class: "text-caption text-medium-emphasis"
 };
-const _hoisted_100 = { class: "mlk-detail-summary mb-4" };
-const _hoisted_101 = { class: "text-body-2 text-medium-emphasis mb-4" };
 const _hoisted_102 = {
-  key: 0,
-  class: "mb-4"
-};
-const _hoisted_103 = { class: "mlk-chip-row" };
-const _hoisted_104 = {
-  key: 0,
-  class: "text-caption text-medium-emphasis"
-};
-const _hoisted_105 = {
   key: 1,
   class: "mt-5"
 };
-const _hoisted_106 = { class: "text-body-2" };
-const _hoisted_107 = { class: "text-body-2" };
+const _hoisted_103 = { class: "mlk-target-head" };
+const _hoisted_104 = { class: "text-body-2" };
+const _hoisted_105 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_106 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_107 = { class: "mlk-detail-summary mb-4" };
+const _hoisted_108 = { class: "text-body-2 text-medium-emphasis mb-4" };
+const _hoisted_109 = {
+  key: 0,
+  class: "mb-4"
+};
+const _hoisted_110 = { class: "mlk-chip-row" };
+const _hoisted_111 = {
+  key: 0,
+  class: "text-caption text-medium-emphasis"
+};
+const _hoisted_112 = {
+  key: 1,
+  class: "mt-5"
+};
+const _hoisted_113 = { class: "text-body-2" };
+const _hoisted_114 = { class: "text-body-2" };
 
 const {computed,getCurrentInstance,onMounted,onUnmounted,ref,watch} = await importShared('vue');
 
@@ -517,6 +527,19 @@ function removePathMapping(index) {
   const mappings = [...(configDraft.value.path_mappings || [])];
   mappings.splice(index, 1);
   configDraft.value.path_mappings = mappings;
+}
+
+function addDownloaderPathMapping() {
+  configDraft.value.downloader_path_mappings = [
+    ...(configDraft.value.downloader_path_mappings || []),
+    { downloader: '', downloader_path: '', resource_path: '' },
+  ];
+}
+
+function removeDownloaderPathMapping(index) {
+  const mappings = [...(configDraft.value.downloader_path_mappings || [])];
+  mappings.splice(index, 1);
+  configDraft.value.downloader_path_mappings = mappings;
 }
 
 function openMediaDetail(item) {
@@ -1975,8 +1998,82 @@ return (_ctx, _cache) => {
                       : _createCommentVNode("", true)
                   ]),
                   _createElementVNode("div", _hoisted_65, [
-                    _cache[61] || (_cache[61] = _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "删除行为", -1)),
                     _createElementVNode("div", _hoisted_66, [
+                      _cache[62] || (_cache[62] = _createElementVNode("div", null, [
+                        _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "下载器目录映射"),
+                        _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "建立下载器任务路径与 MoviePilot 资源目录的对应关系，用于保种任务缺少 Hash 时辅助排查。")
+                      ], -1)),
+                      _createVNode(_component_VBtn, {
+                        "prepend-icon": "mdi-plus",
+                        color: "primary",
+                        variant: "tonal",
+                        onClick: addDownloaderPathMapping
+                      }, {
+                        default: _withCtx(() => [...(_cache[61] || (_cache[61] = [
+                          _createTextVNode(" 添加映射 ", -1)
+                        ]))]),
+                        _: 1
+                      })
+                    ]),
+                    (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(configDraft.value.downloader_path_mappings, (mapping, index) => {
+                      return (_openBlock(), _createBlock(_component_VSheet, {
+                        key: `downloader-path-mapping-${index}`,
+                        border: "",
+                        rounded: "",
+                        class: "mlk-downloader-path-mapping-row"
+                      }, {
+                        default: _withCtx(() => [
+                          _createVNode(_component_VSelect, {
+                            modelValue: mapping.downloader,
+                            "onUpdate:modelValue": $event => ((mapping.downloader) = $event),
+                            label: "下载器",
+                            items: downloaderOptions.value,
+                            density: "comfortable",
+                            "hide-details": ""
+                          }, null, 8, ["modelValue", "onUpdate:modelValue", "items"]),
+                          _createVNode(_component_VTextField, {
+                            modelValue: mapping.downloader_path,
+                            "onUpdate:modelValue": $event => ((mapping.downloader_path) = $event),
+                            label: "下载器路径前缀",
+                            placeholder: "/downloads",
+                            density: "comfortable",
+                            "hide-details": ""
+                          }, null, 8, ["modelValue", "onUpdate:modelValue"]),
+                          _createVNode(_component_VTextField, {
+                            modelValue: mapping.resource_path,
+                            "onUpdate:modelValue": $event => ((mapping.resource_path) = $event),
+                            label: "MP 资源路径前缀",
+                            placeholder: "/media/downloads",
+                            density: "comfortable",
+                            "hide-details": ""
+                          }, null, 8, ["modelValue", "onUpdate:modelValue"]),
+                          _createVNode(_component_VBtn, {
+                            icon: "mdi-delete-outline",
+                            color: "error",
+                            variant: "text",
+                            onClick: $event => (removeDownloaderPathMapping(index))
+                          }, null, 8, ["onClick"])
+                        ]),
+                        _: 2
+                      }, 1024))
+                    }), 128)),
+                    (!(configDraft.value.downloader_path_mappings || []).length)
+                      ? (_openBlock(), _createBlock(_component_VAlert, {
+                          key: 0,
+                          type: "info",
+                          variant: "tonal",
+                          density: "comfortable"
+                        }, {
+                          default: _withCtx(() => [...(_cache[63] || (_cache[63] = [
+                            _createTextVNode(" 只有下载器任务路径和 MoviePilot 资源目录不一致，且需要排查缺少 Hash 的保种任务时才需要配置。 ", -1)
+                          ]))]),
+                          _: 1
+                        }))
+                      : _createCommentVNode("", true)
+                  ]),
+                  _createElementVNode("div", _hoisted_67, [
+                    _cache[64] || (_cache[64] = _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "删除行为", -1)),
+                    _createElementVNode("div", _hoisted_68, [
                       _createVNode(_component_VSwitch, {
                         modelValue: configDraft.value.ai_suggestions,
                         "onUpdate:modelValue": _cache[20] || (_cache[20] = $event => ((configDraft.value.ai_suggestions) = $event)),
@@ -2002,9 +2099,9 @@ return (_ctx, _cache) => {
                     ])
                   ]),
                   _createVNode(_component_VDivider),
-                  _createElementVNode("div", _hoisted_67, [
-                    _createElementVNode("div", _hoisted_68, [
-                      _cache[63] || (_cache[63] = _createElementVNode("div", null, [
+                  _createElementVNode("div", _hoisted_69, [
+                    _createElementVNode("div", _hoisted_70, [
+                      _cache[66] || (_cache[66] = _createElementVNode("div", null, [
                         _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "清理计划"),
                         _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "先限定参与计划的媒体库，再配置多条条件组合；任意一组命中即进入待清理批次。")
                       ], -1)),
@@ -2014,7 +2111,7 @@ return (_ctx, _cache) => {
                         variant: "tonal",
                         onClick: addCleanupRule
                       }, {
-                        default: _withCtx(() => [...(_cache[62] || (_cache[62] = [
+                        default: _withCtx(() => [...(_cache[65] || (_cache[65] = [
                           _createTextVNode(" 添加组合 ", -1)
                         ]))]),
                         _: 1
@@ -2039,8 +2136,8 @@ return (_ctx, _cache) => {
                         class: "mlk-rule-row"
                       }, {
                         default: _withCtx(() => [
-                          _createElementVNode("div", _hoisted_69, "组合 " + _toDisplayString(index + 1), 1),
-                          _createElementVNode("div", _hoisted_70, [
+                          _createElementVNode("div", _hoisted_71, "组合 " + _toDisplayString(index + 1), 1),
+                          _createElementVNode("div", _hoisted_72, [
                             _createVNode(_component_VSelect, {
                               modelValue: rule.operator,
                               "onUpdate:modelValue": $event => ((rule.operator) = $event),
@@ -2103,9 +2200,9 @@ return (_ctx, _cache) => {
                         _: 2
                       }, 1024))
                     }), 128)),
-                    _cache[64] || (_cache[64] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "数字条件填 0 表示不启用；每条组合至少启用一个条件才会生效。", -1))
+                    _cache[67] || (_cache[67] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "数字条件填 0 表示不启用；每条组合至少启用一个条件才会生效。", -1))
                   ]),
-                  _createElementVNode("div", _hoisted_71, [
+                  _createElementVNode("div", _hoisted_73, [
                     _createVNode(_component_VBtn, {
                       "prepend-icon": "mdi-playlist-search",
                       color: "secondary",
@@ -2113,7 +2210,7 @@ return (_ctx, _cache) => {
                       loading: ruleScanning.value,
                       onClick: scanCleanupRules
                     }, {
-                      default: _withCtx(() => [...(_cache[65] || (_cache[65] = [
+                      default: _withCtx(() => [...(_cache[68] || (_cache[68] = [
                         _createTextVNode(" 立即按规则扫描 ", -1)
                       ]))]),
                       _: 1
@@ -2125,7 +2222,7 @@ return (_ctx, _cache) => {
                       loading: saving.value,
                       onClick: saveConfig
                     }, {
-                      default: _withCtx(() => [...(_cache[66] || (_cache[66] = [
+                      default: _withCtx(() => [...(_cache[69] || (_cache[69] = [
                         _createTextVNode(" 保存设置 ", -1)
                       ]))]),
                       _: 1
@@ -2150,51 +2247,51 @@ return (_ctx, _cache) => {
         (selectedMediaDetail.value)
           ? (_openBlock(), _createBlock(_component_VCard, { key: 0 }, {
               default: _withCtx(() => [
-                _createElementVNode("div", _hoisted_72, [
-                  _createElementVNode("div", _hoisted_73, [
-                    _createElementVNode("div", _hoisted_74, [
+                _createElementVNode("div", _hoisted_74, [
+                  _createElementVNode("div", _hoisted_75, [
+                    _createElementVNode("div", _hoisted_76, [
                       (selectedMediaDetail.value.image_url)
                         ? (_openBlock(), _createBlock(_component_VImg, {
                             key: 0,
                             src: resolveImageUrl(selectedMediaDetail.value.image_url),
                             cover: ""
                           }, null, 8, ["src"]))
-                        : (_openBlock(), _createElementBlock("div", _hoisted_75, [
+                        : (_openBlock(), _createElementBlock("div", _hoisted_77, [
                             _createVNode(_component_VIcon, {
                               icon: selectedMediaDetail.value.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline',
                               size: "54"
                             }, null, 8, ["icon"])
                           ]))
                     ]),
-                    _createElementVNode("div", _hoisted_76, [
-                      _cache[71] || (_cache[71] = _createElementVNode("div", { class: "text-subtitle-2 font-weight-medium" }, "媒体摘要", -1)),
-                      _createElementVNode("div", _hoisted_77, [
-                        _cache[67] || (_cache[67] = _createElementVNode("span", null, "观看状态", -1)),
+                    _createElementVNode("div", _hoisted_78, [
+                      _cache[74] || (_cache[74] = _createElementVNode("div", { class: "text-subtitle-2 font-weight-medium" }, "媒体摘要", -1)),
+                      _createElementVNode("div", _hoisted_79, [
+                        _cache[70] || (_cache[70] = _createElementVNode("span", null, "观看状态", -1)),
                         _createElementVNode("strong", null, _toDisplayString(watchStateText(selectedMediaDetail.value)), 1)
                       ]),
-                      _createElementVNode("div", _hoisted_78, [
-                        _cache[68] || (_cache[68] = _createElementVNode("span", null, "媒体大小", -1)),
+                      _createElementVNode("div", _hoisted_80, [
+                        _cache[71] || (_cache[71] = _createElementVNode("span", null, "媒体大小", -1)),
                         _createElementVNode("strong", null, _toDisplayString(_unref(formatBytes)(selectedMediaDetail.value.size)), 1)
                       ]),
-                      _createElementVNode("div", _hoisted_79, [
-                        _cache[69] || (_cache[69] = _createElementVNode("span", null, "所在盘", -1)),
+                      _createElementVNode("div", _hoisted_81, [
+                        _cache[72] || (_cache[72] = _createElementVNode("span", null, "所在盘", -1)),
                         _createElementVNode("strong", null, _toDisplayString(selectedMediaDetail.value.volume_name || '-'), 1)
                       ]),
-                      _createElementVNode("div", _hoisted_80, [
-                        _cache[70] || (_cache[70] = _createElementVNode("span", null, "卷剩余", -1)),
+                      _createElementVNode("div", _hoisted_82, [
+                        _cache[73] || (_cache[73] = _createElementVNode("span", null, "卷剩余", -1)),
                         _createElementVNode("strong", null, _toDisplayString(selectedMediaDetail.value.volume_free_percent !== null && selectedMediaDetail.value.volume_free_percent !== undefined ? `${selectedMediaDetail.value.volume_free_percent}%` : '-'), 1)
                       ]),
-                      _createElementVNode("div", _hoisted_81, [
+                      _createElementVNode("div", _hoisted_83, [
                         _createElementVNode("span", null, _toDisplayString(selectedMediaDetail.value.type === 'series' ? '末集添加' : '入库时间'), 1),
                         _createElementVNode("strong", null, _toDisplayString(selectedMediaDetail.value.type === 'series' ? (selectedMediaDetail.value.last_episode_added_at || '-') : (selectedMediaDetail.value.added_at || '-')), 1)
                       ])
                     ])
                   ]),
-                  _createElementVNode("div", _hoisted_82, [
-                    _createElementVNode("div", _hoisted_83, [
+                  _createElementVNode("div", _hoisted_84, [
+                    _createElementVNode("div", _hoisted_85, [
                       _createElementVNode("div", null, [
-                        _createElementVNode("div", _hoisted_84, _toDisplayString(selectedMediaDetail.value.title), 1),
-                        _createElementVNode("div", _hoisted_85, _toDisplayString(selectedMediaDetail.value.year || '未知年份') + " · " + _toDisplayString(selectedMediaDetail.value.type_label) + " · " + _toDisplayString(selectedMediaDetail.value.library || selectedMediaDetail.value.server), 1)
+                        _createElementVNode("div", _hoisted_86, _toDisplayString(selectedMediaDetail.value.title), 1),
+                        _createElementVNode("div", _hoisted_87, _toDisplayString(selectedMediaDetail.value.year || '未知年份') + " · " + _toDisplayString(selectedMediaDetail.value.type_label) + " · " + _toDisplayString(selectedMediaDetail.value.library || selectedMediaDetail.value.server), 1)
                       ]),
                       _createVNode(_component_VBtn, {
                         icon: "mdi-close",
@@ -2202,7 +2299,7 @@ return (_ctx, _cache) => {
                         onClick: _cache[25] || (_cache[25] = $event => (detailDialog.value = false))
                       })
                     ]),
-                    _createElementVNode("div", _hoisted_86, [
+                    _createElementVNode("div", _hoisted_88, [
                       _createVNode(_component_VChip, {
                         color: "primary",
                         variant: "tonal"
@@ -2213,30 +2310,30 @@ return (_ctx, _cache) => {
                         _: 1
                       })
                     ]),
-                    _createElementVNode("p", _hoisted_87, _toDisplayString(selectedMediaDetail.value.overview || '暂无简介。'), 1),
-                    _createElementVNode("div", _hoisted_88, [
+                    _createElementVNode("p", _hoisted_89, _toDisplayString(selectedMediaDetail.value.overview || '暂无简介。'), 1),
+                    _createElementVNode("div", _hoisted_90, [
                       (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedDetailInfoRows.value, (row) => {
                         return (_openBlock(), _createElementBlock("div", {
                           key: row.label
                         }, [
-                          _createElementVNode("div", _hoisted_89, _toDisplayString(row.label), 1),
+                          _createElementVNode("div", _hoisted_91, _toDisplayString(row.label), 1),
                           _createElementVNode("div", null, _toDisplayString(row.value), 1)
                         ]))
                       }), 128)),
-                      _createElementVNode("div", _hoisted_90, [
-                        _cache[72] || (_cache[72] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "路径", -1)),
+                      _createElementVNode("div", _hoisted_92, [
+                        _cache[75] || (_cache[75] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "路径", -1)),
                         _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.path_preview || selectedMediaDetail.value.path || '-'), 1)
                       ]),
                       (selectedMediaDetail.value.emby_path_preview)
-                        ? (_openBlock(), _createElementBlock("div", _hoisted_91, [
-                            _cache[73] || (_cache[73] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "Emby 原路径", -1)),
+                        ? (_openBlock(), _createElementBlock("div", _hoisted_93, [
+                            _cache[76] || (_cache[76] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "Emby 原路径", -1)),
                             _createElementVNode("div", null, _toDisplayString(selectedMediaDetail.value.emby_path_preview), 1)
                           ]))
                         : _createCommentVNode("", true),
                       (selectedMediaDetail.value.genres?.length)
-                        ? (_openBlock(), _createElementBlock("div", _hoisted_92, [
-                            _cache[74] || (_cache[74] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "类型", -1)),
-                            _createElementVNode("div", _hoisted_93, [
+                        ? (_openBlock(), _createElementBlock("div", _hoisted_94, [
+                            _cache[77] || (_cache[77] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "类型", -1)),
+                            _createElementVNode("div", _hoisted_95, [
                               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedMediaDetail.value.genres, (genre) => {
                                 return (_openBlock(), _createBlock(_component_VChip, {
                                   key: genre,
@@ -2254,7 +2351,7 @@ return (_ctx, _cache) => {
                         : _createCommentVNode("", true)
                     ]),
                     _createVNode(_component_VDivider),
-                    _createElementVNode("div", _hoisted_94, [
+                    _createElementVNode("div", _hoisted_96, [
                       _createVNode(_component_VSpacer),
                       _createVNode(_component_VBtn, {
                         variant: "tonal",
@@ -2273,7 +2370,7 @@ return (_ctx, _cache) => {
                         disabled: updatingPlan.value,
                         onClick: _cache[27] || (_cache[27] = $event => (createSinglePlan(selectedMediaDetail.value)))
                       }, {
-                        default: _withCtx(() => [...(_cache[75] || (_cache[75] = [
+                        default: _withCtx(() => [...(_cache[78] || (_cache[78] = [
                           _createTextVNode(" 为此项生成计划 ", -1)
                         ]))]),
                         _: 1
@@ -2298,16 +2395,16 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createBlock(_component_VCard, { key: 0 }, {
               default: _withCtx(() => [
                 _createVNode(_component_VCardTitle, null, {
-                  default: _withCtx(() => [...(_cache[76] || (_cache[76] = [
+                  default: _withCtx(() => [...(_cache[79] || (_cache[79] = [
                     _createTextVNode("审核删除目标", -1)
                   ]))]),
                   _: 1
                 }),
                 _createVNode(_component_VCardText, null, {
                   default: _withCtx(() => [
-                    _createElementVNode("div", _hoisted_95, _toDisplayString(selectedPlanItem.value.title), 1),
+                    _createElementVNode("div", _hoisted_97, _toDisplayString(selectedPlanItem.value.title), 1),
                     (selectedPlanItem.value.delete_targets?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_96, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_98, [
                           (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedPlanItem.value.delete_targets, (target) => {
                             return (_openBlock(), _createBlock(_component_VSheet, {
                               key: `${target.kind}-${target.path}`,
@@ -2316,7 +2413,7 @@ return (_ctx, _cache) => {
                               class: "mlk-target-row"
                             }, {
                               default: _withCtx(() => [
-                                _createElementVNode("div", _hoisted_97, [
+                                _createElementVNode("div", _hoisted_99, [
                                   _createVNode(_component_VChip, {
                                     color: target.kind === 'src' ? 'error' : 'primary',
                                     variant: "tonal",
@@ -2334,27 +2431,82 @@ return (_ctx, _cache) => {
                                         variant: "tonal",
                                         size: "small"
                                       }, {
-                                        default: _withCtx(() => [...(_cache[77] || (_cache[77] = [
+                                        default: _withCtx(() => [...(_cache[80] || (_cache[80] = [
                                           _createTextVNode(" 目录映射 ", -1)
                                         ]))]),
                                         _: 1
                                       }))
                                     : _createCommentVNode("", true)
                                 ]),
-                                _createElementVNode("div", _hoisted_98, _toDisplayString(target.path_preview || target.path), 1),
+                                _createElementVNode("div", _hoisted_100, _toDisplayString(target.path_preview || target.path), 1),
                                 (target.directory_mapping)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_99, _toDisplayString(target.directory_mapping.name || '未命名目录配置') + " / " + _toDisplayString(target.directory_mapping.transfer_type || '未知整理方式'), 1))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_101, _toDisplayString(target.directory_mapping.name || '未命名目录配置') + " / " + _toDisplayString(target.directory_mapping.transfer_type || '未知整理方式'), 1))
                                   : _createCommentVNode("", true)
                               ]),
                               _: 2
                             }, 1024))
                           }), 128))
                         ]))
-                      : (_openBlock(), _createBlock(_component_VEmptyState, {
-                          key: 1,
+                      : _createCommentVNode("", true),
+                    (selectedPlanItem.value.seed_candidates?.length)
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_102, [
+                          _cache[83] || (_cache[83] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "保种排查候选", -1)),
+                          _createVNode(_component_VAlert, {
+                            type: "warning",
+                            variant: "tonal",
+                            density: "comfortable",
+                            class: "mb-3"
+                          }, {
+                            default: _withCtx(() => [...(_cache[81] || (_cache[81] = [
+                              _createTextVNode(" 以下候选来自下载器目录映射，缺少 download hash，不能自动删除；需要 AI 或人工确认对应下载任务后再处理。 ", -1)
+                            ]))]),
+                            _: 1
+                          }),
+                          (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedPlanItem.value.seed_candidates, (candidate) => {
+                            return (_openBlock(), _createBlock(_component_VSheet, {
+                              key: `${candidate.downloader}-${candidate.downloader_path}`,
+                              border: "",
+                              rounded: "",
+                              class: "mlk-target-row"
+                            }, {
+                              default: _withCtx(() => [
+                                _createElementVNode("div", _hoisted_103, [
+                                  _createVNode(_component_VChip, {
+                                    color: "warning",
+                                    variant: "tonal",
+                                    size: "small"
+                                  }, {
+                                    default: _withCtx(() => [...(_cache[82] || (_cache[82] = [
+                                      _createTextVNode("待确认", -1)
+                                    ]))]),
+                                    _: 1
+                                  }),
+                                  _createVNode(_component_VChip, {
+                                    variant: "tonal",
+                                    size: "small"
+                                  }, {
+                                    default: _withCtx(() => [
+                                      _createTextVNode(_toDisplayString(candidate.downloader || '未知下载器'), 1)
+                                    ]),
+                                    _: 2
+                                  }, 1024)
+                                ]),
+                                _createElementVNode("div", _hoisted_104, _toDisplayString(candidate.downloader_path), 1),
+                                _createElementVNode("div", _hoisted_105, "MP 资源路径：" + _toDisplayString(candidate.source_path), 1),
+                                _createElementVNode("div", _hoisted_106, _toDisplayString(candidate.reason), 1)
+                              ]),
+                              _: 2
+                            }, 1024))
+                          }), 128))
+                        ]))
+                      : _createCommentVNode("", true),
+                    (!selectedPlanItem.value.delete_targets?.length && !selectedPlanItem.value.seed_candidates?.length)
+                      ? (_openBlock(), _createBlock(_component_VEmptyState, {
+                          key: 2,
                           icon: "mdi-file-search-outline",
                           title: "没有可审核的删除目标"
                         }))
+                      : _createCommentVNode("", true)
                   ]),
                   _: 1
                 }),
@@ -2365,7 +2517,7 @@ return (_ctx, _cache) => {
                       variant: "text",
                       onClick: _cache[29] || (_cache[29] = $event => (planTargetDialog.value = false))
                     }, {
-                      default: _withCtx(() => [...(_cache[78] || (_cache[78] = [
+                      default: _withCtx(() => [...(_cache[84] || (_cache[84] = [
                         _createTextVNode("关闭", -1)
                       ]))]),
                       _: 1
@@ -2390,14 +2542,14 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createBlock(_component_VCard, { key: 0 }, {
               default: _withCtx(() => [
                 _createVNode(_component_VCardTitle, null, {
-                  default: _withCtx(() => [...(_cache[79] || (_cache[79] = [
+                  default: _withCtx(() => [...(_cache[85] || (_cache[85] = [
                     _createTextVNode("清理记录详情", -1)
                   ]))]),
                   _: 1
                 }),
                 _createVNode(_component_VCardText, null, {
                   default: _withCtx(() => [
-                    _createElementVNode("div", _hoisted_100, [
+                    _createElementVNode("div", _hoisted_107, [
                       _createVNode(_component_VChip, {
                         color: selectedHistoryItem.value.status === 'success' ? 'success' : 'error',
                         variant: "tonal",
@@ -2458,11 +2610,11 @@ return (_ctx, _cache) => {
                           }))
                         : _createCommentVNode("", true)
                     ]),
-                    _createElementVNode("div", _hoisted_101, _toDisplayString(selectedHistoryItem.value.message), 1),
+                    _createElementVNode("div", _hoisted_108, _toDisplayString(selectedHistoryItem.value.message), 1),
                     (selectedHistoryItem.value.items?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_102, [
-                          _cache[80] || (_cache[80] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "本次媒体", -1)),
-                          _createElementVNode("div", _hoisted_103, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_109, [
+                          _cache[86] || (_cache[86] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "本次媒体", -1)),
+                          _createElementVNode("div", _hoisted_110, [
                             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedHistoryItem.value.items, (item) => {
                               return (_openBlock(), _createBlock(_component_VChip, {
                                 key: `${item.title}-${item.type}`,
@@ -2478,7 +2630,7 @@ return (_ctx, _cache) => {
                           ])
                         ]))
                       : _createCommentVNode("", true),
-                    _cache[82] || (_cache[82] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "删除文件", -1)),
+                    _cache[88] || (_cache[88] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "删除文件", -1)),
                     _createVNode(_component_VDataTable, {
                       headers: [
               { title: '媒体', key: 'media_title', width: 180 },
@@ -2515,7 +2667,7 @@ return (_ctx, _cache) => {
                       ]),
                       _: 1
                     }, 8, ["items"]),
-                    _cache[83] || (_cache[83] = _createElementVNode("div", { class: "text-subtitle-2 mt-5 mb-2" }, "保种任务", -1)),
+                    _cache[89] || (_cache[89] = _createElementVNode("div", { class: "text-subtitle-2 mt-5 mb-2" }, "保种任务", -1)),
                     _createVNode(_component_VDataTable, {
                       headers: [
               { title: '标题', key: 'title', width: 220 },
@@ -2529,7 +2681,7 @@ return (_ctx, _cache) => {
                       "item.downloader": _withCtx(({ item }) => [
                         _createElementVNode("div", null, _toDisplayString(item.downloader || '-'), 1),
                         (item.original_downloader && item.original_downloader !== item.downloader)
-                          ? (_openBlock(), _createElementBlock("div", _hoisted_104, " 原 " + _toDisplayString(item.original_downloader), 1))
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_111, " 原 " + _toDisplayString(item.original_downloader), 1))
                           : _createCommentVNode("", true)
                       ]),
                       "item.download_hash": _withCtx(({ item }) => [
@@ -2556,8 +2708,8 @@ return (_ctx, _cache) => {
                       _: 1
                     }, 8, ["items"]),
                     (selectedHistoryItem.value.failed_targets?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_105, [
-                          _cache[81] || (_cache[81] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "失败项", -1)),
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_112, [
+                          _cache[87] || (_cache[87] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "失败项", -1)),
                           _createVNode(_component_VDataTable, {
                             headers: [
                 { title: '类型', key: 'kind_label', width: 120 },
@@ -2579,7 +2731,7 @@ return (_ctx, _cache) => {
                       variant: "text",
                       onClick: _cache[31] || (_cache[31] = $event => (historyDetailDialog.value = false))
                     }, {
-                      default: _withCtx(() => [...(_cache[84] || (_cache[84] = [
+                      default: _withCtx(() => [...(_cache[90] || (_cache[90] = [
                         _createTextVNode("关闭", -1)
                       ]))]),
                       _: 1
@@ -2603,14 +2755,14 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, null, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, null, {
-              default: _withCtx(() => [...(_cache[85] || (_cache[85] = [
+              default: _withCtx(() => [...(_cache[91] || (_cache[91] = [
                 _createTextVNode("确认执行清理计划", -1)
               ]))]),
               _: 1
             }),
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
-                _createElementVNode("div", _hoisted_106, " 本次计划将删除 " + _toDisplayString(pendingPlan.value?.ready_count || 0) + " 个已匹配媒体条目关联文件，预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value?.estimated_reclaim_size)) + "。执行成功后会删除对应整理记录。 ", 1),
+                _createElementVNode("div", _hoisted_113, " 本次计划将删除 " + _toDisplayString(pendingPlan.value?.ready_count || 0) + " 个已匹配媒体条目关联文件，预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value?.estimated_reclaim_size)) + "。执行成功后会删除对应整理记录。 ", 1),
                 (pendingPlan.value && (pendingPlan.value.ready_count || 0) < pendingPlanItems.value.length)
                   ? (_openBlock(), _createBlock(_component_VAlert, {
                       key: 0,
@@ -2631,7 +2783,7 @@ return (_ctx, _cache) => {
                   density: "comfortable",
                   class: "mt-4"
                 }, {
-                  default: _withCtx(() => [...(_cache[86] || (_cache[86] = [
+                  default: _withCtx(() => [...(_cache[92] || (_cache[92] = [
                     _createTextVNode(" 这是不可逆操作；请确认媒体库文件和源文件范围都符合预期。 ", -1)
                   ]))]),
                   _: 1
@@ -2654,7 +2806,7 @@ return (_ctx, _cache) => {
                   variant: "text",
                   onClick: _cache[34] || (_cache[34] = $event => (executeDialog.value = false))
                 }, {
-                  default: _withCtx(() => [...(_cache[87] || (_cache[87] = [
+                  default: _withCtx(() => [...(_cache[93] || (_cache[93] = [
                     _createTextVNode("取消", -1)
                   ]))]),
                   _: 1
@@ -2666,7 +2818,7 @@ return (_ctx, _cache) => {
                   disabled: !executeConfirmed.value,
                   onClick: executePlan
                 }, {
-                  default: _withCtx(() => [...(_cache[88] || (_cache[88] = [
+                  default: _withCtx(() => [...(_cache[94] || (_cache[94] = [
                     _createTextVNode(" 确认删除 ", -1)
                   ]))]),
                   _: 1
@@ -2689,14 +2841,14 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, null, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, null, {
-              default: _withCtx(() => [...(_cache[89] || (_cache[89] = [
+              default: _withCtx(() => [...(_cache[95] || (_cache[95] = [
                 _createTextVNode("删除当前清理批次", -1)
               ]))]),
               _: 1
             }),
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
-                _createElementVNode("div", _hoisted_107, " 将删除批次 " + _toDisplayString(pendingPlan.value?.batch_id || pendingPlan.value?.id) + " 的待处理记录，不会删除媒体文件、源文件或整理记录。 ", 1),
+                _createElementVNode("div", _hoisted_114, " 将删除批次 " + _toDisplayString(pendingPlan.value?.batch_id || pendingPlan.value?.id) + " 的待处理记录，不会删除媒体文件、源文件或整理记录。 ", 1),
                 _createVNode(_component_VCheckbox, {
                   modelValue: deletePlanConfirmed.value,
                   "onUpdate:modelValue": _cache[36] || (_cache[36] = $event => ((deletePlanConfirmed).value = $event)),
@@ -2715,7 +2867,7 @@ return (_ctx, _cache) => {
                   variant: "text",
                   onClick: _cache[37] || (_cache[37] = $event => (deletePlanDialog.value = false))
                 }, {
-                  default: _withCtx(() => [...(_cache[90] || (_cache[90] = [
+                  default: _withCtx(() => [...(_cache[96] || (_cache[96] = [
                     _createTextVNode("取消", -1)
                   ]))]),
                   _: 1
@@ -2727,7 +2879,7 @@ return (_ctx, _cache) => {
                   disabled: !deletePlanConfirmed.value,
                   onClick: deletePlan
                 }, {
-                  default: _withCtx(() => [...(_cache[91] || (_cache[91] = [
+                  default: _withCtx(() => [...(_cache[97] || (_cache[97] = [
                     _createTextVNode(" 删除批次 ", -1)
                   ]))]),
                   _: 1
@@ -2758,6 +2910,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d341ed46"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-9185694e"]]);
 
 export { AppPage as default };
