@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.10"
+    plugin_version = "1.0.11"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -673,19 +673,28 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _prune_snapshot_after_cleanup(self, result: Dict[str, Any]) -> None:
         removed_media_ids = self._cleanup_removed_media_ids(result)
-        if not removed_media_ids:
+        deleted_targets = result.get("deleted_targets") or []
+        if not removed_media_ids and not deleted_targets:
             return
         snapshot = self._load_snapshot()
         media_items = snapshot.get("media")
         if not isinstance(media_items, list):
             return
         next_media = [item for item in media_items if item.get("id") not in removed_media_ids]
-        if len(next_media) == len(media_items):
+        changed = len(next_media) != len(media_items)
+        if deleted_targets:
+            next_media = self._attach_media_volume_info([dict(item) for item in next_media])
+            changed = True
+        if not changed:
             return
         patched = dict(snapshot)
         patched["media"] = next_media
         self.save_data(self.DATA_KEY_SNAPSHOT, patched)
-        logger.info(f"媒体库管家清理缓存刷新：已从扫描快照移除 {len(media_items) - len(next_media)} 个已清理媒体")
+        logger.info(
+            "媒体库管家清理缓存刷新："
+            f"已从扫描快照移除 {len(media_items) - len(next_media)} 个已清理媒体，"
+            f"已按本次清理结果刷新 {len(next_media)} 个剩余媒体的卷容量信息"
+        )
 
     @staticmethod
     def _cleanup_removed_media_ids(result: Dict[str, Any]) -> set:
@@ -1924,17 +1933,23 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _build_plan_item(self, media: Dict[str, Any], delete_source: bool) -> Dict[str, Any]:
         records = self._match_transfer_records(media)
-        delete_targets: List[Dict[str, Any]] = []
+        record_dest_targets: List[Dict[str, Any]] = []
+        record_source_targets: List[Dict[str, Any]] = []
         for record in records:
             dest_fileitem = getattr(record, "dest_fileitem", None)
             src_fileitem = getattr(record, "src_fileitem", None)
             if isinstance(dest_fileitem, dict):
-                delete_targets.append(self._target_from_history(record, "dest", dest_fileitem))
+                record_dest_targets.append(self._target_from_history(record, "dest", dest_fileitem))
             if delete_source and isinstance(src_fileitem, dict):
-                delete_targets.append(self._target_from_history(record, "src", src_fileitem))
+                record_source_targets.append(self._target_from_history(record, "src", src_fileitem))
 
-        if not records and not delete_targets:
-            delete_targets.extend(self._targets_from_directory_mapping(media, delete_source))
+        mapping_targets = self._targets_from_directory_mapping(media, delete_source)
+        mapping_dest_targets = [target for target in mapping_targets if target.get("kind") == "dest"]
+        mapping_source_targets = [target for target in mapping_targets if target.get("kind") == "src"]
+        delete_targets = list(mapping_dest_targets or record_dest_targets)
+        if delete_source:
+            delete_targets.extend(mapping_source_targets or record_source_targets)
+        delete_targets = self._dedupe_targets(delete_targets)
         delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets), media)
         download_tasks = self._download_tasks_for_media(media, records)
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
@@ -1943,8 +1958,9 @@ class MediaLibraryKeeper(_PluginBase):
         ai_resource_message = ""
 
         has_source_target = any(target.get("kind") == "src" for target in delete_targets)
-        source_record_missing = not records and delete_source and delete_targets and not has_source_target
-        status = "ready" if delete_targets else "no_match"
+        has_media_library_target = any(target.get("kind") == "dest" for target in delete_targets)
+        source_record_missing = delete_source and has_media_library_target and not has_source_target
+        status = "ready" if has_media_library_target else "no_match"
         if source_record_missing:
             if self._ai_resource_recognition_enabled():
                 ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets)
@@ -3313,7 +3329,7 @@ class MediaLibraryKeeper(_PluginBase):
                 recommendations.append({**item, "reason": "入库较久未看", "message": "长期未观看，可结合容量压力决定是否清理。"})
             elif item.get("type") == "movie" and item.get("watched"):
                 recommendations.append({**item, "reason": "已看完电影", "message": "已观看电影，可按需清理。"})
-        return sorted(recommendations, key=lambda item: (item.get("watched") is False, -(int(item.get("size") or 0)), item.get("added_at") or ""))[:30]
+        return sorted(recommendations, key=lambda item: (item.get("watched") is False, -(int(item.get("size") or 0)), item.get("added_at") or ""))
 
     def _disk_status(self, snapshot: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         disks = self._media_disks(snapshot)

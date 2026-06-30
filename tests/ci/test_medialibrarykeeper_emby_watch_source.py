@@ -40,14 +40,14 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.10"' in source
+    assert 'plugin_version = "1.0.11"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.10"
+    assert meta["version"] == "1.0.11"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.10"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.10"]
+    assert plugin_package["version"] == "1.0.11"
+    assert list(meta["history"].keys()) == ["v1.0.11", "v1.0.1"]
+    assert "分页" in meta["history"]["v1.0.11"]
     assert "首次启用" in meta["history"]["v1.0.1"]
-    assert "源文件记录缺失" in meta["history"]["v1.0.10"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -315,7 +315,12 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "媒体库管家手动检查未发送清理批次通知" in source
     assert 'status = "record_missing"' not in source
     assert "source_record_missing" in source
+    assert 'status = "ready" if has_media_library_target else "no_match"' in source
+    assert "mapping_dest_targets or record_dest_targets" in source
+    assert "mapping_source_targets or record_source_targets" in source
     assert 'self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])' in source
+    assert "_attach_media_volume_info([dict(item) for item in next_media])" in source
+    assert 'deleted_targets = result.get("deleted_targets") or []' in source
     assert '"filename": Path(path).name' in source
     assert '"match_source_label": "目录映射识别"' in source
     assert '"ai_suggestions": True' in source
@@ -328,6 +333,15 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "delete_source = bool(payload.get(\"delete_source\"" not in source
     assert "delete_source = bool(self._config.get(\"default_delete_source\"))" in source
     assert "_refresh_cleanup_plan" in source
+    assert "mediaPage" in frontend
+    assert "recommendationPage" in frontend
+    assert "pageCount(sortedMediaRows.value.length)" in frontend
+    assert "paginateRows(sortedMediaRows.value, mediaPage.value)" in frontend
+    assert "VPagination v-model=\"mediaPage\"" in frontend
+    assert "VPagination v-model=\"recommendationPage\"" in frontend
+    assert "mediaRangeText" in frontend
+    assert "recommendationRangeText" in frontend
+    assert "slice(0, pageSize.value)" not in frontend
     assert "媒体库管家清理计划更新：" in source
     assert "媒体库管家清理计划更新识别" in source
     update_api_source = source.split("def update_cleanup_plan_items_api", 1)[1].split("def delete_cleanup_plan_api", 1)[0]

@@ -63,6 +63,8 @@ const typeFilter = ref('全部')
 const mediaSort = ref('last_episode_added_at')
 const sortDesc = ref(true)
 const pageSize = ref(100)
+const mediaPage = ref(1)
+const recommendationPage = ref(1)
 const executeDialog = ref(false)
 const executeConfirmed = ref(false)
 const deletePlanDialog = ref(false)
@@ -289,13 +291,60 @@ const filteredMediaRows = computed(() => filterMediaRows(mediaRows.value))
 
 const sortedMediaRows = computed(() => sortMediaRows(filteredMediaRows.value))
 
-const visibleMediaRows = computed(() => sortedMediaRows.value.slice(0, pageSize.value))
+const mediaPageCount = computed(() => pageCount(sortedMediaRows.value.length))
+
+const visibleMediaRows = computed(() => paginateRows(sortedMediaRows.value, mediaPage.value))
 
 const filteredRecommendationRows = computed(() => filterMediaRows(recommendationRows.value))
 
 const sortedRecommendationRows = computed(() => sortMediaRows(filteredRecommendationRows.value))
 
-const visibleRecommendationRows = computed(() => sortedRecommendationRows.value.slice(0, pageSize.value))
+const recommendationPageCount = computed(() => pageCount(sortedRecommendationRows.value.length))
+
+const visibleRecommendationRows = computed(() => paginateRows(sortedRecommendationRows.value, recommendationPage.value))
+
+const mediaRangeText = computed(() => rangeText(filteredMediaRows.value.length, visibleMediaRows.value.length, mediaPage.value))
+
+const recommendationRangeText = computed(() => rangeText(filteredRecommendationRows.value.length, visibleRecommendationRows.value.length, recommendationPage.value))
+
+function pageCount(total) {
+  return Math.max(1, Math.ceil(Number(total || 0) / Number(pageSize.value || 1)))
+}
+
+function paginateRows(rows, page) {
+  const size = Number(pageSize.value || 1)
+  const start = (Number(page || 1) - 1) * size
+  return rows.slice(start, start + size)
+}
+
+function rangeText(total, visible, page) {
+  if (!total) return '0'
+  const start = (Number(page || 1) - 1) * Number(pageSize.value || 1) + 1
+  const end = start + Number(visible || 0) - 1
+  return `${start}-${end} / ${total}`
+}
+
+watch([
+  selectedLibraryId,
+  selectedDirectoryFilter,
+  searchText,
+  watchFilter,
+  typeFilter,
+  mediaSort,
+  sortDesc,
+  pageSize,
+], () => {
+  mediaPage.value = 1
+  recommendationPage.value = 1
+})
+
+watch(mediaPageCount, (count) => {
+  if (mediaPage.value > count) mediaPage.value = count
+})
+
+watch(recommendationPageCount, (count) => {
+  if (recommendationPage.value > count) recommendationPage.value = count
+})
 
 function filterMediaRows(rows) {
   const keyword = String(searchText.value || '').trim().toLowerCase()
@@ -1019,14 +1068,14 @@ onUnmounted(() => {
               <VSelect v-model="watchFilter" label="观看状态" :items="mediaWatchFilterOptions" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
               <VSelect v-model="mediaSort" label="排序规则" :items="sortOptions" density="comfortable" hide-details />
-              <VSelect v-model.number="pageSize" label="显示数量" :items="pageSizeOptions" density="comfortable" hide-details />
+              <VSelect v-model.number="pageSize" label="每页数量" :items="pageSizeOptions" density="comfortable" hide-details />
               <VBtn :prepend-icon="sortDesc ? 'mdi-sort-descending' : 'mdi-sort-ascending'" variant="tonal" @click="sortDesc = !sortDesc">
                 {{ sortDesc ? '降序' : '升序' }}
               </VBtn>
             </div>
 
             <VAlert v-if="selectedLibrary" type="info" variant="tonal" density="compact">
-              当前入口：{{ selectedLibrary.title }}，共 {{ filteredMediaRows.length }} 个媒体条目，显示 {{ visibleMediaRows.length }} 个。
+              当前入口：{{ selectedLibrary.title }}，共 {{ filteredMediaRows.length }} 个媒体条目，当前页 {{ mediaRangeText }}。
             </VAlert>
 
             <div v-if="visibleMediaRows.length" class="mlk-media-grid">
@@ -1080,6 +1129,9 @@ onUnmounted(() => {
               </VSheet>
             </div>
             <VEmptyState v-else icon="mdi-folder-open-outline" title="没有匹配的媒体" text="调整媒体库入口、类型、观看状态或搜索关键词后再试。" />
+            <div v-if="mediaPageCount > 1" class="mlk-pagination">
+              <VPagination v-model="mediaPage" :length="mediaPageCount" :total-visible="7" density="comfortable" />
+            </div>
           </div>
         </VWindowItem>
 
@@ -1092,13 +1144,13 @@ onUnmounted(() => {
               <VSelect v-model="watchFilter" label="观看状态" :items="mediaWatchFilterOptions" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
               <VSelect v-model="mediaSort" label="排序规则" :items="sortOptions" density="comfortable" hide-details />
-              <VSelect v-model.number="pageSize" label="显示数量" :items="pageSizeOptions" density="comfortable" hide-details />
+              <VSelect v-model.number="pageSize" label="每页数量" :items="pageSizeOptions" density="comfortable" hide-details />
               <VBtn :prepend-icon="sortDesc ? 'mdi-sort-descending' : 'mdi-sort-ascending'" variant="tonal" @click="sortDesc = !sortDesc">
                 {{ sortDesc ? '降序' : '升序' }}
               </VBtn>
             </div>
             <VAlert v-if="recommendationRows.length" type="info" variant="tonal" density="compact">
-              当前清理建议 {{ recommendationRows.length }} 个，筛选后 {{ filteredRecommendationRows.length }} 个，显示 {{ visibleRecommendationRows.length }} 个。
+              当前清理建议 {{ recommendationRows.length }} 个，筛选后 {{ filteredRecommendationRows.length }} 个，当前页 {{ recommendationRangeText }}。
             </VAlert>
             <div v-if="visibleRecommendationRows.length" class="mlk-media-grid">
               <VSheet
@@ -1148,6 +1200,9 @@ onUnmounted(() => {
               :title="recommendationRows.length ? '没有匹配的清理建议' : '暂无清理建议'"
               :text="recommendationRows.length ? '调整筛选、搜索或排序条件后再试。' : '扫描后会列出已看完、入库较久未观看和占用较大的候选。'"
             />
+            <div v-if="recommendationPageCount > 1" class="mlk-pagination">
+              <VPagination v-model="recommendationPage" :length="recommendationPageCount" :total-visible="7" density="comfortable" />
+            </div>
           </div>
         </VWindowItem>
 
@@ -1994,6 +2049,12 @@ onUnmounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   gap: 12px;
   align-items: stretch;
+}
+
+.mlk-pagination {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
 }
 
 .mlk-stat-card,
