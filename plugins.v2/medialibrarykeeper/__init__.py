@@ -50,7 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.44"
+    plugin_version = "0.3.45"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -290,7 +290,13 @@ class MediaLibraryKeeper(_PluginBase):
                 return schemas.Response(success=True, message="已按当前清理规则生成待审核批次", data=status_data)
             pending_plan = (status_data or {}).get("pending_plan") or {}
             if pending_plan and pending_plan.get("source") not in {"scheduled", "rule_scan"}:
+                logger.info(
+                    "媒体库管家手动检查未发送清理批次通知："
+                    f"已有不可覆盖批次 batch={pending_plan.get('batch_id') or pending_plan.get('id')}，"
+                    f"source={pending_plan.get('source')}"
+                )
                 return schemas.Response(success=True, message="当前已有手动清理批次，已保留原批次未覆盖", data=status_data)
+            logger.info("媒体库管家手动检查未发送清理批次通知：当前清理规则未命中媒体")
             return schemas.Response(success=True, message="当前清理规则未命中媒体", data=status_data)
         except Exception as err:
             logger.error(f"媒体库管家规则扫描失败：{err}")
@@ -438,9 +444,9 @@ class MediaLibraryKeeper(_PluginBase):
         title = "【媒体库管家】已确认清理批次" if success else "【媒体库管家】清理批次确认失败"
         self.post_message(
             channel=event_data.get("channel"),
-            mtype=NotificationType.MediaServer,
             title=title,
             text=message,
+            link=self._cleanup_page_url(),
             userid=event_data.get("userid") or event_data.get("user"),
             buttons=self._cleanup_page_buttons(),
             original_message_id=event_data.get("original_message_id"),
@@ -1690,11 +1696,16 @@ class MediaLibraryKeeper(_PluginBase):
     ) -> Optional[Dict[str, Any]]:
         candidates = self._cleanup_candidates(snapshot)
         if not candidates:
+            logger.info(f"媒体库管家清理批次未生成：source={source}，当前清理规则未命中媒体")
             return None
         pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
         overwrite_sources = overwrite_sources or {"scheduled"}
         if pending_plan and pending_plan.get("source") not in overwrite_sources:
-            logger.info("媒体库管家已有手动清理批次，跳过本次定时批次覆盖")
+            logger.info(
+                "媒体库管家清理批次未生成："
+                f"source={source}，已有不可覆盖批次 batch={pending_plan.get('batch_id') or pending_plan.get('id')}，"
+                f"pending_source={pending_plan.get('source')}"
+            )
             return None
         plan = self._build_cleanup_plan(
             candidates,
@@ -1705,6 +1716,11 @@ class MediaLibraryKeeper(_PluginBase):
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         if self._config.get("notify_enabled"):
             self._notify_cleanup_batch(plan)
+        else:
+            logger.info(
+                "媒体库管家清理批次通知跳过："
+                f"batch={plan.get('batch_id') or plan.get('id')}，source={source}，notify_enabled=False"
+            )
         return plan
 
     def _cleanup_candidates(self, snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2536,7 +2552,7 @@ class MediaLibraryKeeper(_PluginBase):
         if result.get("failed_targets"):
             lines.append("失败项：")
             lines.extend(f"- {item.get('path_preview') or item.get('record_id')}: {item.get('error')}" for item in result["failed_targets"][:5])
-        self.post_message(mtype=NotificationType.MediaServer, title=title, text="\n".join(lines))
+        self._post_cleanup_message(title=title, text="\n".join(lines))
 
     def _notify_cleanup_batch(self, plan: Dict[str, Any]) -> None:
         items = plan.get("items") or []
@@ -2554,11 +2570,23 @@ class MediaLibraryKeeper(_PluginBase):
             )
         if len(items) > 8:
             lines.append(f"... 另有 {len(items) - 8} 个媒体")
-        self.post_message(
-            mtype=NotificationType.MediaServer,
+        self._post_cleanup_message(
             title="【媒体库管家】清理批次待确认",
             text="\n".join(lines),
             buttons=self._cleanup_batch_buttons(plan),
+        )
+
+    def _post_cleanup_message(self, title: str, text: str, buttons: Optional[List[List[Dict[str, str]]]] = None, **kwargs) -> None:
+        logger.info(
+            "媒体库管家发送清理通知："
+            f"title={title}，link={self._cleanup_page_url()}，buttons={sum(len(row) for row in buttons or [])}"
+        )
+        self.post_message(
+            title=title,
+            text=text,
+            link=self._cleanup_page_url(),
+            buttons=buttons,
+            **kwargs,
         )
 
     def _cleanup_batch_buttons(self, plan: Dict[str, Any]) -> List[List[Dict[str, str]]]:
@@ -2578,7 +2606,7 @@ class MediaLibraryKeeper(_PluginBase):
         return [[{"text": "打开清理计划", "url": self._cleanup_page_url()}]]
 
     def _cleanup_page_url(self) -> str:
-        return f"#/plugin-app/{self.__class__.__name__}/main"
+        return settings.MP_DOMAIN(f"#/plugin-app/{self.__class__.__name__}/main")
 
     def _notify_disk_warning(self, snapshot: Dict[str, Any]) -> None:
         if not self._config.get("disk_warning_enabled") or not self._config.get("notify_enabled"):
