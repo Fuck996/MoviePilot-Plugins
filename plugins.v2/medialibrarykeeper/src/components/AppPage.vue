@@ -1500,8 +1500,31 @@ onUnmounted(() => {
               <div class="text-caption text-medium-emphasis">{{ candidate.reason }}</div>
             </VSheet>
           </div>
+          <div v-if="selectedPlanItem.ai_resource_candidates?.length" class="mt-5">
+            <div class="text-subtitle-2 mb-2">AI识别候选源文件</div>
+            <VAlert type="info" variant="tonal" density="comfortable" class="mb-3">
+              以下候选由系统 AI 根据媒体信息和目录映射判断，仅用于人工审核，不会自动加入删除目标。
+            </VAlert>
+            <VSheet
+              v-for="candidate in selectedPlanItem.ai_resource_candidates"
+              :key="candidate.source_path"
+              border
+              rounded
+              class="mlk-target-row"
+            >
+              <div class="mlk-target-head">
+                <VChip color="warning" variant="tonal" size="small">AI识别</VChip>
+                <VChip variant="tonal" size="small">{{ Math.round((candidate.confidence || 0) * 100) }}%</VChip>
+              </div>
+              <div class="text-caption text-medium-emphasis">源文件名</div>
+              <div class="text-body-2">{{ candidate.filename || '-' }}</div>
+              <div class="text-caption text-medium-emphasis mt-1">路径</div>
+              <div class="text-body-2">{{ candidate.source_path }}</div>
+              <div class="text-caption text-medium-emphasis mt-1">{{ candidate.reason }}</div>
+            </VSheet>
+          </div>
           <VEmptyState
-            v-if="!selectedPlanItem.delete_targets?.length && !selectedPlanItem.seed_candidates?.length"
+            v-if="!selectedPlanItem.delete_targets?.length && !selectedPlanItem.seed_candidates?.length && !selectedPlanItem.ai_resource_candidates?.length"
             icon="mdi-file-search-outline"
             title="没有可审核的删除目标"
           />

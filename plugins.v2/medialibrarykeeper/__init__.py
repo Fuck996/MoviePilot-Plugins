@@ -1,6 +1,9 @@
+import asyncio
+import json
 import os
 import shutil
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -50,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.46"
+    plugin_version = "0.3.47"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1657,18 +1660,20 @@ class MediaLibraryKeeper(_PluginBase):
                 f"status={item.get('status')}，message={item.get('message')}，"
                 f"targets={len(item.get('delete_targets') or [])}，target_sources={target_sources}，"
                 f"download_tasks={len(item.get('download_tasks') or [])}，"
-                f"seed_candidates={len(item.get('seed_candidates') or [])}"
+                f"seed_candidates={len(item.get('seed_candidates') or [])}，"
+                f"ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}"
             )
 
     def _cleanup_plan_recognition_summary(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         items = plan.get("items") or []
         targets = [target for item in items for target in item.get("delete_targets", []) or []]
         seed_candidates = [candidate for item in items for candidate in item.get("seed_candidates", []) or []]
+        ai_resource_candidates = [candidate for item in items for candidate in item.get("ai_resource_candidates", []) or []]
         ai_targets = [target for target in targets if target.get("match_source") == "ai_resource_recognition"]
         ai_candidates = [candidate for candidate in seed_candidates if candidate.get("match_source") == "ai_resource_recognition"]
-        ai_involved = bool(ai_targets or ai_candidates)
+        ai_involved = bool(ai_targets or ai_candidates or ai_resource_candidates)
         if ai_involved:
-            ai_result = f"AI识别目标 {len(ai_targets)} 个，候选 {len(ai_candidates)} 个"
+            ai_result = f"AI识别目标 {len(ai_targets)} 个，保种候选 {len(ai_candidates)} 个，源文件候选 {len(ai_resource_candidates)} 个"
         elif self._config.get("ai_suggestions"):
             ai_result = f"AI未参与；当前批次生成保种排查候选 {len(seed_candidates)} 个，需用户确认"
         else:
@@ -1801,11 +1806,14 @@ class MediaLibraryKeeper(_PluginBase):
         delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets), media)
         download_tasks = self._download_tasks_for_media(media, records)
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
+        ai_resource_candidates: List[Dict[str, Any]] = []
 
         has_source_target = any(target.get("kind") == "src" for target in delete_targets)
         status = "ready" if delete_targets else "no_match"
         if not records and delete_source and delete_targets and not has_source_target:
             status = "record_missing"
+            if self._config.get("ai_suggestions"):
+                ai_resource_candidates = self._ai_resource_candidates_for_record_missing(media, delete_targets)
         if records and delete_targets:
             message = "已匹配整理记录。"
         elif status == "record_missing":
@@ -1836,6 +1844,7 @@ class MediaLibraryKeeper(_PluginBase):
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
             "download_tasks": download_tasks,
             "seed_candidates": seed_candidates,
+            "ai_resource_candidates": ai_resource_candidates,
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
             "message": message,
@@ -1881,6 +1890,161 @@ class MediaLibraryKeeper(_PluginBase):
                     "status": "needs_review",
                 })
         return candidates
+
+    def _ai_resource_candidates_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        source_candidates = self._source_file_candidates_from_directory_mapping(media, targets)
+        if not source_candidates:
+            logger.info(f"媒体库管家 AI资源任务识别：title={media.get('title')}，未找到可交给 AI 判断的疑似源文件")
+            return []
+        ai_selected = self._select_source_candidates_with_ai(media, source_candidates)
+        logger.info(
+            "媒体库管家 AI资源任务识别结果："
+            f"title={media.get('title')}，candidates={len(source_candidates)}，selected={len(ai_selected)}，"
+            f"result={self._json_dumps(ai_selected[:5])}"
+        )
+        return ai_selected
+
+    def _source_file_candidates_from_directory_mapping(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        storage = StorageChain()
+        mappings = self._directory_mappings()
+        candidates: List[Dict[str, Any]] = []
+        seen = set()
+        dest_paths = [
+            self._normalized_path_text(target.get("path"))
+            for target in targets
+            if target.get("kind") == "dest" and self._normalized_path_text(target.get("path"))
+        ] or self._media_file_paths(media)
+        for media_path in dest_paths:
+            mapping = self._match_directory_mapping(media_path, mappings)
+            if not mapping:
+                continue
+            expected_path = self._mapped_source_path(media_path, mapping)
+            expected_parent = str(Path(expected_path).parent) if expected_path else ""
+            if not expected_parent:
+                continue
+            storage_name = self._clean_text(getattr(mapping, "storage", "")) or "local"
+            try:
+                parent_item = storage.get_file_item(storage=storage_name, path=Path(expected_parent))
+                siblings = storage.list_files(parent_item, recursion=False) if parent_item else []
+            except Exception as err:
+                logger.warning(f"媒体库管家 AI资源任务识别读取源目录失败：path={expected_parent}，error={err}")
+                siblings = []
+            for sibling in siblings or []:
+                sibling_item = self._fileitem_to_dict(sibling)
+                sibling_path = self._normalized_path_text(sibling_item.get("path"))
+                if not sibling_path or not self._is_media_file_path(sibling_path):
+                    continue
+                key = sibling_path.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append({
+                    "title": media.get("title"),
+                    "media_id": media.get("id"),
+                    "type_label": media.get("type_label"),
+                    "source_path": sibling_path,
+                    "filename": Path(sibling_path).name,
+                    "size": self._to_int(sibling_item.get("size") or sibling_item.get("size_bytes"), 0),
+                    "expected_path": expected_path,
+                    "media_path": media_path,
+                    "match_source": "directory_mapping_candidate",
+                    "status": "ai_pending",
+                })
+        return sorted(candidates, key=lambda item: item.get("size") or 0, reverse=True)[:20]
+
+    def _select_source_candidates_with_ai(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        try:
+            response_text = self._run_async(self._ask_llm_for_source_candidates(media, candidates))
+            selected = self._parse_ai_candidate_response(response_text, candidates)
+        except Exception as err:
+            logger.warning(f"媒体库管家 AI资源任务识别调用失败：title={media.get('title')}，error={err}")
+            return []
+        return selected
+
+    async def _ask_llm_for_source_candidates(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> str:
+        from app.agent.llm import LLMHelper
+
+        payload = {
+            "media": {
+                "title": media.get("title"),
+                "year": media.get("year"),
+                "type": media.get("type"),
+                "type_label": media.get("type_label"),
+                "library_path": media.get("path") or media.get("path_preview"),
+            },
+            "candidates": [
+                {
+                    "index": index,
+                    "filename": candidate.get("filename"),
+                    "source_path": candidate.get("source_path"),
+                    "size": candidate.get("size"),
+                    "expected_path": candidate.get("expected_path"),
+                }
+                for index, candidate in enumerate(candidates, 1)
+            ],
+        }
+        prompt = (
+            "你是 MoviePilot 媒体整理助手。请根据媒体标题、年份、媒体库路径和候选源文件路径，"
+            "判断哪些候选最可能是该媒体对应的源文件。只输出 JSON，不要解释。"
+            "JSON 格式：{\"selected\":[{\"index\":1,\"confidence\":0.0-1.0,\"reason\":\"简短中文原因\"}]}。"
+            "如果没有可信候选，输出 {\"selected\":[]}。\n"
+            f"{self._json_dumps(payload)}"
+        )
+        llm = await LLMHelper.get_llm(streaming=False)
+        response = await asyncio.wait_for(llm.ainvoke(prompt), timeout=45)
+        return self._clean_text(getattr(response, "content", response))
+
+    def _parse_ai_candidate_response(self, response_text: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        payload = self._extract_json_object(response_text)
+        selected = payload.get("selected") if isinstance(payload, dict) else []
+        if not isinstance(selected, list):
+            return []
+        result: List[Dict[str, Any]] = []
+        for item in selected[:5]:
+            if not isinstance(item, dict):
+                continue
+            index = self._to_int(item.get("index"), 0)
+            if index < 1 or index > len(candidates):
+                continue
+            confidence = float(item.get("confidence") or 0)
+            if confidence < 0.6:
+                continue
+            candidate = candidates[index - 1]
+            result.append({
+                **candidate,
+                "confidence": round(confidence, 3),
+                "reason": self._clean_text(item.get("reason")) or "AI判断为疑似源文件",
+                "match_source": "ai_resource_recognition",
+                "match_source_label": "AI识别",
+                "status": "needs_review",
+            })
+        return result
+
+    @staticmethod
+    def _extract_json_object(text: str) -> Dict[str, Any]:
+        clean_text = str(text or "").strip()
+        if clean_text.startswith("```"):
+            clean_text = clean_text.strip("`")
+            if clean_text.lower().startswith("json"):
+                clean_text = clean_text[4:].strip()
+        start = clean_text.find("{")
+        end = clean_text.rfind("}")
+        if start >= 0 and end >= start:
+            clean_text = clean_text[start:end + 1]
+        return json.loads(clean_text)
+
+    @staticmethod
+    def _run_async(coro: Any) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(coro)).result()
+
+    @staticmethod
+    def _json_dumps(value: Any) -> str:
+        return json.dumps(value, ensure_ascii=False, default=str)
 
     def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool) -> List[Dict[str, Any]]:
         mappings = self._directory_mappings()

@@ -75,6 +75,8 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "mlk-plan-target-title" in source
     assert "downloadTaskName" in source
     assert "未知下载器" not in source
+    assert "AI识别候选源文件" in source
+    assert "ai_resource_candidates" in source
     assert "可执行媒体条目" in source
     assert "已匹配媒体条目" not in source
     assert "未找到下载器任务" in source
@@ -163,6 +165,12 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "ai_involved=" in source
     assert "ai_result=" in source
     assert "媒体库管家清理计划识别" in source
+    assert "_ai_resource_candidates_for_record_missing" in source
+    assert "_source_file_candidates_from_directory_mapping" in source
+    assert "_select_source_candidates_with_ai" in source
+    assert "LLMHelper.get_llm" in source
+    assert "ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}" in source
+    assert "源文件候选" in source
     assert "get_agent_tools" in source
     assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
@@ -171,6 +179,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "candidate_downloaders" in frontend
     assert "'candidate_downloaders'" in provider
     assert "matched_transfer_records: (item.matched_transfer_records || [])" in provider
+    assert "compactAiResourceCandidate" in provider
     assert "download_tasks: (item.download_tasks || []).map(compactSeedTask)" in provider
     assert "'volume_name'" in provider
     assert "'volume_free_percent'" in provider
