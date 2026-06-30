@@ -169,7 +169,6 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_cleanup_message_buttons" in source
     assert "_is_http_url" in source
     assert 'settings.MP_DOMAIN(f"#/plugin-app/{self.__class__.__name__}/main")' in source
-    assert 'callback_data": (' in source
     assert "buttons=self._cleanup_batch_buttons(plan)" in source
     assert "self._notify_cleanup_batch(plan)" in source
     assert "_post_cleanup_message" in source
@@ -186,6 +185,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "items[:8]" not in notify_batch_source
     assert "items[:12]" in notify_batch_source
     assert "清理明细：" in notify_batch_source
+    assert '"-------------------"' in notify_batch_source
+    assert '"--------------------"' in notify_batch_source
     assert "未配置 MoviePilot 外部访问地址，无法生成审核跳转按钮。" in notify_batch_source
     assert "媒体库管家发送清理通知" in source
     assert "媒体库管家手动检查未发送清理批次通知" in source
@@ -239,6 +240,10 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "compactQueueItem" in provider
     assert "deleted_targets" in provider
     assert "return any(self._matches_cleanup_rule(item, rule) for rule in rules)" in source
+    cleanup_buttons_source = source.split("def _cleanup_batch_buttons", 1)[1].split("def _cleanup_page_buttons", 1)[0]
+    assert "打开清理计划" in cleanup_buttons_source
+    assert "确认执行" not in cleanup_buttons_source
+    assert "callback_data" not in cleanup_buttons_source
 
     agent_tool = Path("plugins.v2/medialibrarykeeper/agenttool.py").read_text(encoding="utf-8")
     assert "medialibrarykeeper_seed_review" in agent_tool

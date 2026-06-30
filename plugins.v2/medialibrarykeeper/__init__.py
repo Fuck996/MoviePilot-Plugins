@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.52"
+    plugin_version = "0.3.53"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2889,6 +2889,7 @@ class MediaLibraryKeeper(_PluginBase):
             f"命中媒体：{len(items)} 个，有记录：{recorded_count} 个，记录丢失：{missing_count} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
             "请在媒体库管家审核删除目标后确认执行。",
+            "-------------------",
         ]
         lines.append("清理明细：")
         for item in items[:12]:
@@ -2899,6 +2900,7 @@ class MediaLibraryKeeper(_PluginBase):
             lines.append(f"- {title} / {type_label} / {self._human_size(item.get('size'))} / {record_label} / 删除目标 {target_count}")
         if len(items) > 12:
             lines.append(f"... 另有 {len(items) - 12} 个媒体")
+        lines.append("--------------------")
         if missing_count:
             lines.append("记录丢失条目需要在页面核对目录映射和源文件候选。")
         if link:
@@ -2936,14 +2938,6 @@ class MediaLibraryKeeper(_PluginBase):
         link = self._cleanup_page_url()
         if link:
             rows.append([{"text": "打开清理计划", "url": link}])
-        if self._plan_ready_count(plan) > 0:
-            rows.append([{
-                "text": "确认执行",
-                "callback_data": (
-                    f"[PLUGIN]{self.__class__.__name__}|"
-                    f"{self.MESSAGE_ACTION_CONFIRM_CLEANUP}{plan.get('id')}"
-                ),
-            }])
         return rows
 
     def _cleanup_page_buttons(self) -> List[List[Dict[str, str]]]:
