@@ -48,6 +48,7 @@ const fallbackToast = ref({
 const activeTab = ref('overview')
 const selectedMedia = ref([])
 const selectedLibraryId = ref('')
+const selectedDirectoryFilter = ref('')
 const selectedMediaDetail = ref(null)
 const detailDialog = ref(false)
 const selectedPlanItem = ref(null)
@@ -209,6 +210,19 @@ const librarySwitchOptions = computed(() => [
   { title: '全部媒体库', value: '' },
   ...libraryOptions.value,
 ])
+const directoryFilterOptions = computed(() => [
+  { title: '全部目录', value: '', paths: [] },
+  ...((configDraft.value.path_mappings || []).map((mapping, index) => {
+    const embyPath = normalizeFilterPath(mapping.emby_path)
+    const mpPath = normalizeFilterPath(mapping.mp_path)
+    const title = mpPath && embyPath ? `${mpPath}（${embyPath}）` : (mpPath || embyPath || `目录 ${index + 1}`)
+    return {
+      title,
+      value: `${index}:${embyPath}:${mpPath}`,
+      paths: [mpPath, embyPath].filter(Boolean),
+    }
+  }).filter(item => item.paths.length)),
+])
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
   { title: '最后观看日期', value: 'last_watched_at' },
@@ -235,8 +249,9 @@ const filteredMediaRows = computed(() => {
   const keyword = String(searchText.value || '').trim().toLowerCase()
   return mediaRows.value.filter((item) => {
     if (selectedLibraryId.value && item.library_id !== selectedLibraryId.value) return false
+    if (!mediaMatchesDirectoryFilter(item)) return false
     if (keyword) {
-      const haystack = `${item.title || ''}${item.overview || ''}${item.path_preview || ''}`.toLowerCase()
+      const haystack = `${item.title || ''}${item.overview || ''}${item.path_preview || ''}${item.emby_path_preview || ''}`.toLowerCase()
       if (!haystack.includes(keyword)) return false
     }
     if (typeFilter.value === '电影' && item.type !== 'movie') return false
@@ -314,8 +329,41 @@ const selectedPlanHeaders = [
   { title: '操作', key: 'actions', width: 84, sortable: false },
 ]
 
-function isSelected(item) {
+const pendingPlanMediaIds = computed(() => new Set(pendingPlanItems.value.map(item => item.media_id).filter(Boolean)))
+
+function isInCurrentSelection(item) {
   return selectedMedia.value.some(selected => selected.id === item.id)
+}
+
+function isInPendingPlan(item) {
+  return pendingPlanMediaIds.value.has(item?.id)
+}
+
+function isSelected(item) {
+  return isInCurrentSelection(item) || isInPendingPlan(item)
+}
+
+function selectedButtonLabel(item) {
+  if (isInPendingPlan(item)) return '已在当前批次'
+  return isInCurrentSelection(item) ? '从清理选择中移除' : '加入清理选择'
+}
+
+function normalizeFilterPath(path) {
+  return String(path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+function mediaMatchesDirectoryFilter(item) {
+  if (!selectedDirectoryFilter.value) return true
+  const option = directoryFilterOptions.value.find(entry => entry.value === selectedDirectoryFilter.value)
+  const prefixes = option?.paths || []
+  if (!prefixes.length) return true
+  const paths = [
+    item.path,
+    item.path_preview,
+    item.emby_path,
+    item.emby_path_preview,
+  ].map(normalizeFilterPath).filter(Boolean)
+  return prefixes.some(prefix => paths.some(path => path === prefix || path.startsWith(`${prefix}/`)))
 }
 
 function sortValue(item, key) {
@@ -393,7 +441,11 @@ function queueStatusText(item) {
 }
 
 function toggleSelected(item) {
-  if (isSelected(item)) {
+  if (isInPendingPlan(item)) {
+    showToast('该媒体已在当前批次中', 'warning')
+    return
+  }
+  if (isInCurrentSelection(item)) {
     selectedMedia.value = selectedMedia.value.filter(selected => selected.id !== item.id)
     return
   }
@@ -794,6 +846,8 @@ onMounted(() => {
   })
 })
 
+const filteredRecommendationRows = computed(() => recommendationRows.value.filter(mediaMatchesDirectoryFilter))
+
 watch(cleanupQueueRows, (rows) => {
   if (rows.length) {
     startQueuePolling()
@@ -905,6 +959,7 @@ onUnmounted(() => {
           <div class="mlk-section">
             <div class="mlk-toolbar">
               <VSelect v-model="selectedLibraryId" label="媒体库" :items="librarySwitchOptions" density="comfortable" hide-details />
+              <VSelect v-model="selectedDirectoryFilter" label="目录" :items="directoryFilterOptions" density="comfortable" hide-details />
               <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
               <VSelect v-model="watchFilter" label="观看状态" :items="mediaWatchFilterOptions" density="comfortable" hide-details />
               <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
@@ -938,7 +993,7 @@ onUnmounted(() => {
                     :icon="isSelected(item) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
                     :color="isSelected(item) ? 'success' : undefined"
                     variant="text"
-                    :aria-label="isSelected(item) ? '从清理选择中移除' : '加入清理选择'"
+                    :aria-label="selectedButtonLabel(item)"
                     @click.stop="toggleSelected(item)"
                   />
                 </div>
@@ -975,9 +1030,15 @@ onUnmounted(() => {
 
         <VWindowItem value="recommendations">
           <div class="mlk-section">
-            <div v-if="recommendationRows.length" class="mlk-media-grid">
+            <div class="mlk-toolbar">
+              <VSelect v-model="selectedDirectoryFilter" label="目录" :items="directoryFilterOptions" density="comfortable" hide-details />
+            </div>
+            <VAlert v-if="recommendationRows.length" type="info" variant="tonal" density="compact">
+              当前清理建议 {{ recommendationRows.length }} 个，目录筛选后 {{ filteredRecommendationRows.length }} 个。
+            </VAlert>
+            <div v-if="filteredRecommendationRows.length" class="mlk-media-grid">
               <VSheet
-                v-for="item in recommendationRows"
+                v-for="item in filteredRecommendationRows"
                 :key="item.id"
                 border
                 rounded
@@ -994,7 +1055,7 @@ onUnmounted(() => {
                     :icon="isSelected(item) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
                     :color="isSelected(item) ? 'success' : undefined"
                     variant="text"
-                    :aria-label="isSelected(item) ? '从清理选择中移除' : '加入清理选择'"
+                    :aria-label="selectedButtonLabel(item)"
                     @click.stop="toggleSelected(item)"
                   />
                 </div>
@@ -1017,7 +1078,12 @@ onUnmounted(() => {
                 </div>
               </VSheet>
             </div>
-            <VEmptyState v-else icon="mdi-lightbulb-on-outline" title="暂无清理建议" text="扫描后会列出已看完、入库较久未观看和占用较大的候选。" />
+            <VEmptyState
+              v-else
+              icon="mdi-lightbulb-on-outline"
+              :title="recommendationRows.length ? '没有匹配的清理建议' : '暂无清理建议'"
+              :text="recommendationRows.length ? '切换目录筛选后再试。' : '扫描后会列出已看完、入库较久未观看和占用较大的候选。'"
+            />
           </div>
         </VWindowItem>
 
@@ -1521,7 +1587,7 @@ onUnmounted(() => {
             <VDivider />
             <div class="mlk-detail-actions">
               <VBtn variant="tonal" :color="isSelected(selectedMediaDetail) ? 'success' : 'primary'" @click="toggleSelected(selectedMediaDetail)">
-                {{ isSelected(selectedMediaDetail) ? '移出清理选择' : '加入清理选择' }}
+                {{ selectedButtonLabel(selectedMediaDetail) }}
               </VBtn>
               <VBtn color="primary" variant="flat" :loading="creatingPlan" :disabled="updatingPlan" @click="createSinglePlan(selectedMediaDetail)">
                 为此项生成计划

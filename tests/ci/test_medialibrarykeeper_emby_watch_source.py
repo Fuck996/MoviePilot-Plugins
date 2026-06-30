@@ -40,13 +40,14 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.1"' in source
+    assert 'plugin_version = "1.0.2"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.1"
+    assert meta["version"] == "1.0.2"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.1"
-    assert list(meta["history"].keys()) == ["v1.0.1"]
+    assert plugin_package["version"] == "1.0.2"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2"]
     assert "首次启用" in meta["history"]["v1.0.1"]
+    assert "目录映射筛选" in meta["history"]["v1.0.2"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -122,8 +123,21 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "mediaVolumeCapacityText" in source
     assert "return `${name}（${formatBytes(volume.free)}）`" in source
     assert "recommendationRows.length" in source
-    recommendation_source = source.split('<VWindowItem value="recommendations">', 1)[1].split('<VEmptyState v-else', 1)[0]
+    assert "selectedDirectoryFilter" in source
+    assert "directoryFilterOptions" in source
+    assert "filteredRecommendationRows" in source
+    assert "mediaMatchesDirectoryFilter" in source
+    assert "normalizeFilterPath" in source
+    assert "label=\"目录\"" in source
+    assert "item.emby_path_preview" in source
+    assert "pendingPlanMediaIds" in source
+    assert "isInPendingPlan" in source
+    assert "selectedButtonLabel" in source
+    assert "该媒体已在当前批次中" in source
+    recommendation_source = source.split('<VWindowItem value="recommendations">', 1)[1].split('<VEmptyState', 1)[0]
     assert "mlk-select-btn" in recommendation_source
+    assert "filteredRecommendationRows.length" in recommendation_source
+    assert "v-for=\"item in filteredRecommendationRows\"" in recommendation_source
     assert "@click.stop=\"toggleSelected(item)\"" in recommendation_source
     plan_summary_source = source.split('<div class="mlk-plan-summary">', 1)[1].split('<div class="mlk-plan-actions">', 1)[0]
     assert "mlk-plan-bar-title" in plan_summary_source
