@@ -255,7 +255,7 @@ const directoryFilterEntries = computed(() => {
       if (!rootPath || options.has(rootPath)) continue
       const name = root.name || rootPath
       options.set(rootPath, {
-        title: `${name}（${rootPath}）`,
+        title: directoryFilterTitle(name, rootPath),
         value: rootPath,
         rootPath,
       })
@@ -400,6 +400,14 @@ function selectedButtonLabel(item) {
 
 function normalizeFilterPath(path) {
   return String(path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+function directoryFilterTitle(name, rootPath) {
+  const cleanName = String(name || '').trim()
+  const cleanPath = normalizeFilterPath(rootPath)
+  const pathName = cleanPath.split('/').filter(Boolean).pop() || cleanPath
+  if (!cleanName || cleanName === cleanPath || cleanName === pathName) return pathName || cleanPath
+  return `${cleanName}（${cleanPath}）`
 }
 
 function mediaMatchesDirectoryFilter(item) {

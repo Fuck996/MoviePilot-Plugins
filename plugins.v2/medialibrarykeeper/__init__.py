@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1965,6 +1965,7 @@ class MediaLibraryKeeper(_PluginBase):
             "volume_free_percent": media.get("volume_free_percent"),
             "volume_summary": media.get("volume_summary"),
             "volumes": media.get("volumes") or [],
+            "root_directories": media.get("root_directories") or [],
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
             "download_tasks": download_tasks,
             "seed_candidates": seed_candidates,
