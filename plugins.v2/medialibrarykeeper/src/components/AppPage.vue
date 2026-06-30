@@ -355,6 +355,19 @@ function removePathMapping(index) {
   configDraft.value.path_mappings = mappings
 }
 
+function addDownloaderPathMapping() {
+  configDraft.value.downloader_path_mappings = [
+    ...(configDraft.value.downloader_path_mappings || []),
+    { downloader: '', downloader_path: '', resource_path: '' },
+  ]
+}
+
+function removeDownloaderPathMapping(index) {
+  const mappings = [...(configDraft.value.downloader_path_mappings || [])]
+  mappings.splice(index, 1)
+  configDraft.value.downloader_path_mappings = mappings
+}
+
 function openMediaDetail(item) {
   selectedMediaDetail.value = item
   detailDialog.value = true
@@ -1177,6 +1190,33 @@ onUnmounted(() => {
             </div>
 
             <div class="mlk-settings-group">
+              <div class="mlk-section-header">
+                <div>
+                  <div class="text-subtitle-1 font-weight-medium">下载器目录映射</div>
+                  <div class="text-caption text-medium-emphasis">建立下载器任务路径与 MoviePilot 资源目录的对应关系，用于保种任务缺少 Hash 时辅助排查。</div>
+                </div>
+                <VBtn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addDownloaderPathMapping">
+                  添加映射
+                </VBtn>
+              </div>
+              <VSheet
+                v-for="(mapping, index) in configDraft.downloader_path_mappings"
+                :key="`downloader-path-mapping-${index}`"
+                border
+                rounded
+                class="mlk-downloader-path-mapping-row"
+              >
+                <VSelect v-model="mapping.downloader" label="下载器" :items="downloaderOptions" density="comfortable" hide-details />
+                <VTextField v-model="mapping.downloader_path" label="下载器路径前缀" placeholder="/downloads" density="comfortable" hide-details />
+                <VTextField v-model="mapping.resource_path" label="MP 资源路径前缀" placeholder="/media/downloads" density="comfortable" hide-details />
+                <VBtn icon="mdi-delete-outline" color="error" variant="text" @click="removeDownloaderPathMapping(index)" />
+              </VSheet>
+              <VAlert v-if="!(configDraft.downloader_path_mappings || []).length" type="info" variant="tonal" density="comfortable">
+                只有下载器任务路径和 MoviePilot 资源目录不一致，且需要排查缺少 Hash 的保种任务时才需要配置。
+              </VAlert>
+            </div>
+
+            <div class="mlk-settings-group">
               <div class="text-subtitle-1 font-weight-medium">删除行为</div>
               <div class="mlk-switch-grid">
                 <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
@@ -1361,7 +1401,26 @@ onUnmounted(() => {
               </div>
             </VSheet>
           </div>
-          <VEmptyState v-else icon="mdi-file-search-outline" title="没有可审核的删除目标" />
+          <div v-if="selectedPlanItem.seed_candidates?.length" class="mt-5">
+            <div class="text-subtitle-2 mb-2">保种排查候选</div>
+            <VAlert type="warning" variant="tonal" density="comfortable" class="mb-3">
+              以下候选来自下载器目录映射，缺少 download hash，不能自动删除；需要 AI 或人工确认对应下载任务后再处理。
+            </VAlert>
+            <VSheet v-for="candidate in selectedPlanItem.seed_candidates" :key="`${candidate.downloader}-${candidate.downloader_path}`" border rounded class="mlk-target-row">
+              <div class="mlk-target-head">
+                <VChip color="warning" variant="tonal" size="small">待确认</VChip>
+                <VChip variant="tonal" size="small">{{ candidate.downloader || '未知下载器' }}</VChip>
+              </div>
+              <div class="text-body-2">{{ candidate.downloader_path }}</div>
+              <div class="text-caption text-medium-emphasis">MP 资源路径：{{ candidate.source_path }}</div>
+              <div class="text-caption text-medium-emphasis">{{ candidate.reason }}</div>
+            </VSheet>
+          </div>
+          <VEmptyState
+            v-if="!selectedPlanItem.delete_targets?.length && !selectedPlanItem.seed_candidates?.length"
+            icon="mdi-file-search-outline"
+            title="没有可审核的删除目标"
+          />
         </VCardText>
         <VCardActions>
           <VSpacer />
@@ -1848,6 +1907,14 @@ onUnmounted(() => {
   padding: 14px;
 }
 
+.mlk-downloader-path-mapping-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr) 44px;
+  gap: 10px;
+  align-items: start;
+  padding: 14px;
+}
+
 .mlk-settings-actions {
   justify-content: flex-end;
 }
@@ -1967,6 +2034,11 @@ onUnmounted(() => {
   }
 
   .mlk-rule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mlk-path-mapping-row,
+  .mlk-downloader-path-mapping-row {
     grid-template-columns: 1fr;
   }
 

@@ -53,6 +53,10 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "filterCleanedMediaFromStatus" in source
     assert "cleanedMediaIdsFromHistory" in source
     assert "pending_plan:" in source
+    assert "downloader_path_mappings" in source
+    assert "下载器目录映射" in source
+    assert "保种排查候选" in source
+    assert "seed_candidates" in source
     detail_actions_source = source.split('<div class="mlk-detail-actions">', 1)[1].split("</div>", 1)[0]
     assert "deleteSource" not in detail_actions_source
     assert "默认同时删除源文件" in source
@@ -105,13 +109,24 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_prune_snapshot_after_cleanup" in source
     assert "_cleanup_removed_media_ids" in source
     assert "媒体库管家清理缓存刷新" in source
+    assert "_normalize_downloader_path_mappings" in source
+    assert "_seed_task_candidates_from_targets" in source
+    assert "_join_path" in source
+    assert "get_agent_tools" in source
+    assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
+    assert "compactSeedCandidate" in provider
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend
     assert "cleanupQueueRows" in frontend
     assert "compactQueueItem" in provider
     assert "deleted_targets" in provider
+
+    agent_tool = Path("plugins.v2/medialibrarykeeper/agenttool.py").read_text(encoding="utf-8")
+    assert "medialibrarykeeper_seed_review" in agent_tool
+    assert "get_seed_review_context" in agent_tool
+    assert "不会删除下载任务或媒体文件" in agent_tool
 
 
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:

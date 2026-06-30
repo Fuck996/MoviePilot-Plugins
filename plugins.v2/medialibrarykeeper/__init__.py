@@ -34,6 +34,13 @@ except Exception:
     TransferHistory = None
 
 
+_ACTIVE_PLUGIN = None
+
+
+def get_medialibrarykeeper_plugin():
+    return _ACTIVE_PLUGIN
+
+
 class MediaLibraryKeeper(_PluginBase):
     """
     媒体库管家。
@@ -43,7 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.39"
+    plugin_version = "0.3.40"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -68,6 +75,8 @@ class MediaLibraryKeeper(_PluginBase):
         self._queue_worker: Optional[threading.Thread] = None
 
     def init_plugin(self, config: dict = None):
+        global _ACTIVE_PLUGIN
+        _ACTIVE_PLUGIN = self
         config = self._normalize_config(config or {})
         self._config = config
         self._enabled = bool(config.get("enabled"))
@@ -79,6 +88,14 @@ class MediaLibraryKeeper(_PluginBase):
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
         return []
+
+    def get_agent_tools(self) -> List[type]:
+        try:
+            from .agenttool import MediaLibraryKeeperSeedReviewTool
+        except Exception as err:
+            logger.warning(f"媒体库管家 AI 智能体工具注册失败：{err}")
+            return []
+        return [MediaLibraryKeeperSeedReviewTool]
 
     def get_service(self) -> Optional[List[Dict[str, Any]]]:
         if not self._enabled or not self._config.get("scan_cron"):
@@ -570,6 +587,36 @@ class MediaLibraryKeeper(_PluginBase):
             if item.get("status") in {"queued", "running"}
         ]
 
+    def get_seed_review_context(self, limit: int = 20) -> Dict[str, Any]:
+        pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
+        if not pending_plan:
+            return {"plan_id": "", "candidate_count": 0, "candidates": []}
+        candidates: List[Dict[str, Any]] = []
+        for item in pending_plan.get("items", []) or []:
+            for candidate in item.get("seed_candidates", []) or []:
+                candidates.append({
+                    "plan_id": pending_plan.get("id"),
+                    "media_id": item.get("media_id"),
+                    "title": item.get("title"),
+                    "type_label": item.get("type_label"),
+                    "downloader": candidate.get("downloader"),
+                    "source_path": candidate.get("source_path"),
+                    "downloader_path": candidate.get("downloader_path"),
+                    "reason": candidate.get("reason"),
+                    "status": candidate.get("status"),
+                })
+                if len(candidates) >= max(1, int(limit or 20)):
+                    return {
+                        "plan_id": pending_plan.get("id") or "",
+                        "candidate_count": len(candidates),
+                        "candidates": candidates,
+                    }
+        return {
+            "plan_id": pending_plan.get("id") or "",
+            "candidate_count": len(candidates),
+            "candidates": candidates,
+        }
+
     def get_image_api(
         self,
         server: str,
@@ -650,6 +697,7 @@ class MediaLibraryKeeper(_PluginBase):
             "mediaservers": [],
             "downloaders": [],
             "path_mappings": [],
+            "downloader_path_mappings": [],
             "delete_seed_tasks": False,
             "library_names": [],
             "cleanup_libraries": [],
@@ -675,6 +723,7 @@ class MediaLibraryKeeper(_PluginBase):
         for key in ["mediaservers", "downloaders", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
         normalized["path_mappings"] = cls._normalize_path_mappings(normalized.get("path_mappings"))
+        normalized["downloader_path_mappings"] = cls._normalize_downloader_path_mappings(normalized.get("downloader_path_mappings"))
         normalized["library_names"] = []
         normalized["cleanup_rules"] = cls._normalize_cleanup_rules(raw_config)
         first_rule = normalized["cleanup_rules"][0] if normalized["cleanup_rules"] else cls._default_cleanup_rule()
@@ -726,6 +775,26 @@ class MediaLibraryKeeper(_PluginBase):
                 continue
             normalized.append({"emby_path": emby_path, "mp_path": mp_path})
         return sorted(normalized, key=lambda item: len(item["emby_path"]), reverse=True)
+
+    @classmethod
+    def _normalize_downloader_path_mappings(cls, mappings: Any) -> List[Dict[str, str]]:
+        if not isinstance(mappings, list):
+            return []
+        normalized = []
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                continue
+            downloader = cls._clean_text(mapping.get("downloader"))
+            downloader_path = cls._normalized_path_text(mapping.get("downloader_path"))
+            resource_path = cls._normalized_path_text(mapping.get("resource_path"))
+            if not downloader or not downloader_path or not resource_path:
+                continue
+            normalized.append({
+                "downloader": downloader,
+                "downloader_path": downloader_path,
+                "resource_path": resource_path,
+            })
+        return sorted(normalized, key=lambda item: len(item["resource_path"]), reverse=True)
 
     @classmethod
     def _normalize_cleanup_rule(cls, rule: Dict[str, Any]) -> Dict[str, Any]:
@@ -1616,6 +1685,8 @@ class MediaLibraryKeeper(_PluginBase):
         if not records and not delete_targets:
             delete_targets.extend(self._targets_from_directory_mapping(media, delete_source))
         delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets), media)
+        download_tasks = self._download_tasks_for_media(media, records)
+        seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
 
         status = "ready" if delete_targets else "no_match"
         if records and delete_targets:
@@ -1640,7 +1711,8 @@ class MediaLibraryKeeper(_PluginBase):
             "last_episode_added_at": media.get("last_episode_added_at"),
             "last_watched_at": media.get("last_watched_at"),
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
-            "download_tasks": self._download_tasks_for_media(media, records),
+            "download_tasks": download_tasks,
+            "seed_candidates": seed_candidates,
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
             "message": message,
@@ -1653,6 +1725,39 @@ class MediaLibraryKeeper(_PluginBase):
             target["media_type"] = media.get("type")
             target["media_type_label"] = media.get("type_label")
         return targets
+
+    def _seed_task_candidates_from_targets(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        mappings = self._config.get("downloader_path_mappings") or []
+        if not mappings:
+            return []
+        candidates: List[Dict[str, Any]] = []
+        seen = set()
+        for target in targets:
+            if target.get("kind") != "src":
+                continue
+            source_path = self._normalized_path_text(target.get("path"))
+            if not source_path:
+                continue
+            for mapping in mappings:
+                resource_path = self._clean_text(mapping.get("resource_path"))
+                if not self._path_is_relative_to(source_path, resource_path):
+                    continue
+                relative_path = self._relative_path(source_path, resource_path)
+                downloader_path = self._join_path(mapping.get("downloader_path"), relative_path)
+                key = (mapping.get("downloader"), downloader_path)
+                if not downloader_path or key in seen:
+                    continue
+                seen.add(key)
+                candidates.append({
+                    "title": media.get("title"),
+                    "media_id": media.get("id"),
+                    "downloader": mapping.get("downloader"),
+                    "source_path": source_path,
+                    "downloader_path": downloader_path,
+                    "reason": "整理记录或下载历史未提供 download hash，已按下载器目录映射生成候选路径，需 AI/人工确认对应下载任务。",
+                    "status": "needs_review",
+                })
+        return candidates
 
     def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool) -> List[Dict[str, Any]]:
         mappings = self._directory_mappings()
@@ -1870,6 +1975,16 @@ class MediaLibraryKeeper(_PluginBase):
         if clean_path.startswith(clean_root + "/"):
             return clean_path[len(clean_root) + 1 :]
         return ""
+
+    @classmethod
+    def _join_path(cls, root: Any, relative_path: Any) -> str:
+        clean_root = cls._normalized_path_text(root)
+        clean_relative = cls._normalized_path_text(relative_path).lstrip("/")
+        if not clean_root:
+            return ""
+        if not clean_relative:
+            return clean_root
+        return f"{clean_root}/{clean_relative}"
 
     @staticmethod
     def _normalized_path_text(path: Any) -> str:
