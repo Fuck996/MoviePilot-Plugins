@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.54"
+    plugin_version = "0.3.55"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2581,9 +2581,9 @@ class MediaLibraryKeeper(_PluginBase):
             task["candidate_downloaders"] = candidate_names
             for downloader, service_info in candidates:
                 module = getattr(service_info, "module", None)
-                if not module or not hasattr(module, "get_torrents"):
+                if not module:
                     continue
-                torrent = self._find_downloader_torrent(module, download_hash)
+                torrent = self._find_downloader_torrent(service_info, downloader, download_hash)
                 if not torrent:
                     continue
                 summary = self._downloader_torrent_summary(torrent)
@@ -2610,7 +2610,35 @@ class MediaLibraryKeeper(_PluginBase):
                 )
         return tasks
 
-    def _find_downloader_torrent(self, module: Any, download_hash: str) -> Optional[Any]:
+    def _find_downloader_torrent(self, service_info: Any, downloader: str, download_hash: str) -> Optional[Any]:
+        module = getattr(service_info, "module", None)
+        torrent = self._find_downloader_torrent_via_moviepilot_module(module, downloader, download_hash)
+        if torrent:
+            return torrent
+        instance = getattr(service_info, "instance", None)
+        return self._find_downloader_torrent_via_get_torrents(instance or module, download_hash)
+
+    def _find_downloader_torrent_via_moviepilot_module(self, module: Any, downloader: str, download_hash: str) -> Optional[Any]:
+        if not module or not hasattr(module, "list_torrents"):
+            return None
+        for hashs in [download_hash, [download_hash]]:
+            try:
+                torrents = module.list_torrents(hashs=hashs, downloader=downloader, include_all_tags=True)
+            except Exception as err:
+                logger.warning(
+                    f"媒体库管家保种任务识别读取 MoviePilot 下载器任务失败：downloader={downloader}，"
+                    f"hash={download_hash}，hashs={hashs}，error={err}"
+                )
+                continue
+            torrent = self._match_downloader_torrent(torrents or [], download_hash, targeted=True)
+            if torrent:
+                logger.info(f"媒体库管家保种任务识别命中 MoviePilot 下载器任务：downloader={downloader}，hash={download_hash}")
+                return torrent
+        return None
+
+    def _find_downloader_torrent_via_get_torrents(self, module: Any, download_hash: str) -> Optional[Any]:
+        if not module or not hasattr(module, "get_torrents"):
+            return None
         clean_hash = download_hash.lower()
         for args, targeted in [
             ({"ids": download_hash}, True),
@@ -2620,10 +2648,17 @@ class MediaLibraryKeeper(_PluginBase):
             torrents = self._query_downloader_torrents(module, download_hash, args)
             if not torrents:
                 continue
-            for torrent in torrents:
-                torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
-                if torrent_hash == clean_hash or (targeted and not torrent_hash and len(torrents) == 1):
-                    return torrent
+            torrent = self._match_downloader_torrent(torrents, clean_hash, targeted=targeted)
+            if torrent:
+                return torrent
+        return None
+
+    def _match_downloader_torrent(self, torrents: List[Any], download_hash: str, targeted: bool = False) -> Optional[Any]:
+        clean_hash = self._clean_text(download_hash).lower()
+        for torrent in torrents:
+            torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
+            if torrent_hash == clean_hash or (targeted and not torrent_hash and len(torrents) == 1):
+                return torrent
         return None
 
     def _query_downloader_torrents(self, module: Any, download_hash: str, args: Dict[str, Any]) -> List[Any]:
@@ -2643,8 +2678,8 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _downloader_torrent_summary(self, torrent: Any) -> Dict[str, Any]:
         return {
-            "name": self._clean_text(self._object_value(torrent, "name", "title")),
-            "save_path": self._clean_text(self._object_value(torrent, "save_path", "savePath", "downloadDir", "download_dir")),
+            "name": self._clean_text(self._object_value(torrent, "title", "name")),
+            "save_path": self._clean_text(self._object_value(torrent, "save_path", "savePath", "downloadDir", "download_dir", "content_path", "path")),
             "state": self._clean_text(self._object_value(torrent, "state", "status")),
             "size": self._to_int(self._object_value(torrent, "size", "totalSize", "total_size"), 0),
         }

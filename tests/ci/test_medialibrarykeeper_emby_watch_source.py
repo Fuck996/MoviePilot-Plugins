@@ -156,10 +156,15 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "title.lower() in self._clean_text(getattr(record, \"title\", \"\")).lower()" not in source
     assert "_enrich_download_tasks_from_configured_downloaders" in source
     assert "_find_downloader_torrent" in source
+    assert "_find_downloader_torrent_via_moviepilot_module" in source
+    assert "_find_downloader_torrent_via_get_torrents" in source
+    assert "_match_downloader_torrent" in source
     assert "_query_downloader_torrents" in source
     assert "_downloader_torrent_summary" in source
+    assert "module.list_torrents(hashs=hashs, downloader=downloader, include_all_tags=True)" in source
     assert "module.get_torrents(**args)" in source
     assert '"ids": [download_hash]' in source
+    assert 'self._object_value(torrent, "title", "name")' in source
     assert '"downloader_match_source": "configured_downloader"' in source
     assert '"downloader_lookup_state": "matched" if summary.get("name") else "matched_without_name"' in source
     assert '"task_name": summary.get("name")' in source
