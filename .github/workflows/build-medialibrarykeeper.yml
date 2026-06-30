@@ -53,7 +53,7 @@ jobs:
         working-directory: plugins.v2/medialibrarykeeper
         run: |
           rm -f dist/index.html
-          rm -f dist/assets/index-* dist/assets/date-* dist/assets/runtime-*
+          rm -f dist/assets/index-* dist/assets/index.js dist/assets/date-* dist/assets/date.js dist/assets/runtime-* dist/assets/runtime.js
           rm -rf dist/assets/__federation_shared_vuetify
 
       - name: Commit built assets

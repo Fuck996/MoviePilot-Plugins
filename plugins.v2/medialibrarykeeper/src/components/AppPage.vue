@@ -114,6 +114,19 @@ const historySeedRows = computed(() => [
   ...((selectedHistoryItem.value?.deleted_seed_tasks || []).map(item => ({ ...item, result: 'success' }))),
   ...((selectedHistoryItem.value?.failed_seed_tasks || []).map(item => ({ ...item, result: 'failed' }))),
 ])
+const selectedDownloadTasks = computed(() => selectedPlanItem.value?.download_tasks || [])
+const selectedMatchedDownloadTasks = computed(() => selectedDownloadTasks.value.filter(downloadTaskMatched))
+const selectedHistoryHashSummary = computed(() => {
+  const tasks = selectedDownloadTasks.value.filter(task => !downloadTaskMatched(task))
+  if (!tasks.length) return null
+  const sources = countByLabel(tasks.map(task => task.source_label || task.source || '历史记录'))
+  const downloaders = countByLabel(tasks.flatMap(task => {
+    const candidates = Array.isArray(task.candidate_downloaders) ? task.candidate_downloaders.filter(Boolean) : []
+    return candidates.length ? candidates : [task.original_downloader || task.downloader || '配置下载器']
+  }))
+  const titles = [...new Set(tasks.map(task => task.title).filter(Boolean))]
+  return { total: tasks.length, sources, downloaders, titles }
+})
 const selectedDetailInfoRows = computed(() => {
   const item = selectedMediaDetail.value
   if (!item) return []
@@ -171,6 +184,16 @@ function downloadTaskHint(task) {
     return task.task_name ? '' : '下载器接口已按 Hash 定位任务，但未返回任务名。'
   }
   return '当前批次只保存了历史 Hash，执行清理时会按 Hash 到配置下载器中尝试删除。'
+}
+function countByLabel(labels) {
+  return labels.reduce((counts, label) => {
+    const key = label || '未知'
+    counts[key] = (counts[key] || 0) + 1
+    return counts
+  }, {})
+}
+function summaryEntries(summary) {
+  return Object.entries(summary || {}).map(([label, count]) => `${label} ${count}`).join(' / ')
 }
 function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
@@ -1474,10 +1497,10 @@ onUnmounted(() => {
           </VAlert>
           <div class="mb-5">
             <div class="text-subtitle-2 mb-2">下载器任务</div>
-            <VSheet v-if="selectedPlanItem.download_tasks?.length" border rounded class="mlk-target-row">
-              <div v-for="task in selectedPlanItem.download_tasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
+            <VSheet v-if="selectedMatchedDownloadTasks.length" border rounded class="mlk-target-row">
+              <div v-for="task in selectedMatchedDownloadTasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
                 <div class="mlk-target-head">
-                  <VChip :color="downloadTaskMatched(task) ? 'success' : 'warning'" variant="tonal" size="small">
+                  <VChip color="success" variant="tonal" size="small">
                     {{ downloadTaskStatusText(task) }}
                   </VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
@@ -1486,14 +1509,27 @@ onUnmounted(() => {
                 </div>
                 <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
                 <div v-if="downloadTaskHint(task)" class="text-caption text-medium-emphasis">{{ downloadTaskHint(task) }}</div>
-                <div v-if="!downloadTaskMatched(task) && task.title" class="text-caption text-medium-emphasis">历史记录：{{ task.title }}</div>
-                <div class="text-caption text-medium-emphasis">Hash：{{ task.download_hash }}</div>
                 <div v-if="task.save_path" class="text-caption text-medium-emphasis">保存目录：{{ task.save_path }}</div>
                 <div v-if="task.content_path && task.content_path !== task.save_path" class="text-caption text-medium-emphasis">内容路径：{{ task.content_path }}</div>
-                <div v-if="task.related_to_hash" class="text-caption text-medium-emphasis">关联Hash：{{ task.related_to_hash }}</div>
+                <div v-if="task.original_downloader && task.original_downloader !== downloadTaskName(task)" class="text-caption text-medium-emphasis">原下载器：{{ task.original_downloader }}</div>
               </div>
             </VSheet>
-            <VAlert v-else type="warning" variant="tonal" density="comfortable">
+            <VSheet v-if="selectedHistoryHashSummary" border rounded class="mlk-target-row mt-3">
+              <div class="mlk-target-head">
+                <VChip color="warning" variant="tonal" size="small">历史Hash线索</VChip>
+                <VChip variant="tonal" size="small">{{ selectedHistoryHashSummary.total }} 条</VChip>
+              </div>
+              <div class="text-body-2 font-weight-medium">未读取到配置下载器实时任务信息</div>
+              <div class="text-caption text-medium-emphasis">
+                当前批次只保存历史 Hash，未在配置下载器实时任务中定位到任务；执行清理时仍会按 Hash 到配置下载器尝试删除。
+              </div>
+              <div class="text-caption text-medium-emphasis">来源：{{ summaryEntries(selectedHistoryHashSummary.sources) }}</div>
+              <div class="text-caption text-medium-emphasis">候选下载器：{{ summaryEntries(selectedHistoryHashSummary.downloaders) }}</div>
+              <div v-if="selectedHistoryHashSummary.titles.length" class="text-caption text-medium-emphasis">
+                历史记录：{{ selectedHistoryHashSummary.titles.slice(0, 3).join(' / ') }}{{ selectedHistoryHashSummary.titles.length > 3 ? ` 等 ${selectedHistoryHashSummary.titles.length} 条` : '' }}
+              </div>
+            </VSheet>
+            <VAlert v-if="!selectedMatchedDownloadTasks.length && !selectedHistoryHashSummary" type="warning" variant="tonal" density="comfortable">
               未找到下载器任务；如果整理记录缺少 download hash，需要通过“保种排查候选”确认后再处理。
             </VAlert>
           </div>
@@ -1625,7 +1661,6 @@ onUnmounted(() => {
             :headers="[
               { title: '标题', key: 'title', width: 220 },
               { title: '下载器', key: 'downloader', width: 140 },
-              { title: 'Hash', key: 'download_hash' },
               { title: '结果', key: 'result', width: 110 },
             ]"
             :items="historySeedRows"
@@ -1638,7 +1673,6 @@ onUnmounted(() => {
               </div>
             </template>
             <template #item.title="{ item }">{{ downloadTaskTitle(item) }}</template>
-            <template #item.download_hash="{ item }">{{ item.download_hash ? `${item.download_hash.slice(0, 16)}...` : '-' }}</template>
             <template #item.result="{ item }">
               <VChip :color="item.result === 'success' ? 'success' : 'error'" variant="tonal" size="small">
                 {{ item.result === 'success' ? '已删除' : (item.error || '失败') }}

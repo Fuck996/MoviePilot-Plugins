@@ -13,6 +13,7 @@ export default defineConfig({
         './Config': './src/components/Config.vue',
         './Dashboard': './src/components/Dashboard.vue',
         './AppPage': './src/components/AppPage.vue',
+        './AppPageMain': './src/components/AppPageMain.vue',
       },
       shared: {
         vue: {
@@ -27,6 +28,13 @@ export default defineConfig({
     target: 'esnext',
     minify: false,
     cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name][extname]',
+      },
+    },
   },
   css: {
     postcss: {

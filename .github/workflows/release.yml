@@ -107,7 +107,7 @@ jobs:
                 echo "Building frontend assets in $plugin_dir"
                 (cd "$plugin_dir" && npm install --no-package-lock --registry=https://registry.npmmirror.com && npm run build)
                 rm -f "$plugin_dir"/dist/index.html
-                rm -f "$plugin_dir"/dist/assets/index-* "$plugin_dir"/dist/assets/date-* "$plugin_dir"/dist/assets/runtime-*
+                rm -f "$plugin_dir"/dist/assets/index-* "$plugin_dir"/dist/assets/index.js "$plugin_dir"/dist/assets/date-* "$plugin_dir"/dist/assets/date.js "$plugin_dir"/dist/assets/runtime-* "$plugin_dir"/dist/assets/runtime.js
                 rm -rf "$plugin_dir"/dist/assets/__federation_shared_vuetify
               fi
 
@@ -121,8 +121,11 @@ jobs:
                 -x "*/package-lock.json" \
                 -x "*/dist/index.html" \
                 -x "*/dist/assets/index-*" \
+                -x "*/dist/assets/index.js" \
                 -x "*/dist/assets/date-*" \
+                -x "*/dist/assets/date.js" \
                 -x "*/dist/assets/runtime-*" \
+                -x "*/dist/assets/runtime.js" \
                 -x "*/dist/assets/__federation_shared_vuetify/*") >/dev/null
 
               # Re-running a version replaces the release asset for that plugin.

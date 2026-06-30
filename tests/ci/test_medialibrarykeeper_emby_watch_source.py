@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -31,6 +32,33 @@ def test_medialibrarykeeper_frontend_has_no_watching_filter() -> None:
     assert "watching" not in source
     assert "已播放" in source
     assert "summary.value.watched" in source
+
+
+def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    package = json.loads(Path("package.v2.json").read_text(encoding="utf-8"))
+    plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
+    meta = package["MediaLibraryKeeper"]
+
+    assert 'plugin_version = "1.0.0"' in source
+    assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
+    assert meta["version"] == "1.0.0"
+    assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
+    assert plugin_package["version"] == "1.0.0"
+    assert list(meta["history"].keys()) == ["v1.0.0"]
+    assert "正式上线" in meta["history"]["v1.0.0"]
+    assert not any(key.startswith("v0.") for key in meta["history"])
+
+
+def test_medialibrarykeeper_app_page_exposes_stable_entry() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/vite.config.js").read_text(encoding="utf-8")
+
+    assert "'./AppPage': './src/components/AppPage.vue'" in source
+    assert "'./AppPageMain': './src/components/AppPageMain.vue'" in source
+    assert Path("plugins.v2/medialibrarykeeper/src/components/AppPageMain.vue").exists()
+    assert "entryFileNames: 'assets/[name].js'" in source
+    assert "chunkFileNames: 'assets/[name].js'" in source
+    assert "assetFileNames: 'assets/[name][extname]'" in source
 
 
 def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
@@ -256,7 +284,17 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "执行清理时会按 Hash 到配置下载器中尝试删除" in frontend
     assert "保存目录：" in frontend
     assert "内容路径：" in frontend
-    assert "关联Hash：" in frontend
+    assert "历史Hash线索" in frontend
+    assert "selectedHistoryHashSummary" in frontend
+    assert "selectedMatchedDownloadTasks" in frontend
+    assert "候选下载器：" in frontend
+    assert "原下载器：" in frontend
+    plan_dialog_source = frontend.split('<VDialog v-model="planTargetDialog"', 1)[1].split('<VDialog v-model="historyDetailDialog"', 1)[0]
+    assert "Hash：" not in plan_dialog_source
+    assert "关联Hash：" not in plan_dialog_source
+    history_seed_source = frontend.split('const historySeedRows', 1)[1].split('</VDataTable>', 1)[0]
+    assert "{ title: 'Hash'" not in history_seed_source
+    assert "download_hash.slice" not in history_seed_source
     assert "'task_name'" in provider
     assert "'save_path'" in provider
     assert "'content_path'" in provider
