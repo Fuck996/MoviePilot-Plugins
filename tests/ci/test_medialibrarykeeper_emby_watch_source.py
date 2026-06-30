@@ -57,8 +57,12 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "下载器目录映射" in source
     assert "保种排查候选" in source
     assert "seed_candidates" in source
+    assert "AI资源任务识别" in source
+    assert 'label="允许 AI 参与清理建议排序" disabled' not in source
+    assert "mlk-table-actions" in source
     detail_actions_source = source.split('<div class="mlk-detail-actions">', 1)[1].split("</div>", 1)[0]
     assert "deleteSource" not in detail_actions_source
+    assert "VSpacer" not in detail_actions_source
     assert "默认同时删除源文件" in source
     assert "同时删除源文件" in source
     assert "background: rgba(var(--v-theme-surface-variant), 0.42);" not in source
@@ -122,6 +126,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "cleanupQueueRows" in frontend
     assert "compactQueueItem" in provider
     assert "deleted_targets" in provider
+    assert "return any(self._matches_cleanup_rule(item, rule) for rule in rules)" in source
 
     agent_tool = Path("plugins.v2/medialibrarykeeper/agenttool.py").read_text(encoding="utf-8")
     assert "medialibrarykeeper_seed_review" in agent_tool

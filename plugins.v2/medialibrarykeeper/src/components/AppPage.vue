@@ -233,7 +233,7 @@ const capabilityLabels = {
   emby_scan: 'Emby 扫描',
   transfer_history_match: '整理记录匹配',
   storage_delete: '文件删除',
-  ai_suggestions: 'AI 建议',
+  ai_suggestions: 'AI资源任务识别',
   notification: '通知推送',
 }
 
@@ -243,7 +243,7 @@ const planHeaders = [
   { title: '预计释放', key: 'size', width: 120 },
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
-  { title: '操作', key: 'actions', width: 132, sortable: false },
+  { title: '操作', key: 'actions', width: 132, sortable: false, align: 'center' },
 ]
 const selectedPlanHeaders = [
   { title: '媒体', key: 'title' },
@@ -1017,30 +1017,34 @@ onUnmounted(() => {
                     <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
                     <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
                     <template #item.actions="{ item }">
-                      <VTooltip text="查看删除目标" location="top">
-                        <template #activator="{ props: tooltipProps }">
-                          <span v-bind="tooltipProps">
+                      <div class="mlk-table-actions">
+                        <VTooltip text="查看删除目标" location="top">
+                          <template #activator="{ props: tooltipProps }">
+                            <span v-bind="tooltipProps">
+                              <VBtn
+                                icon="mdi-file-eye-outline"
+                                variant="text"
+                                :disabled="!item.delete_targets?.length"
+                                aria-label="查看删除目标"
+                                @click="openPlanTargetDialog(item)"
+                              />
+                            </span>
+                          </template>
+                        </VTooltip>
+                        <VTooltip text="从批次移除" location="top">
+                          <template #activator="{ props: tooltipProps }">
                             <VBtn
-                              icon="mdi-file-eye-outline"
+                              v-bind="tooltipProps"
+                              icon="mdi-minus-circle-outline"
                               variant="text"
-                              :disabled="!item.delete_targets?.length"
-                              @click="openPlanTargetDialog(item)"
+                              color="error"
+                              :loading="updatingPlan"
+                              aria-label="从批次移除"
+                              @click="removePlanItem(item)"
                             />
-                          </span>
-                        </template>
-                      </VTooltip>
-                      <VTooltip text="从批次移除" location="top">
-                        <template #activator="{ props: tooltipProps }">
-                          <VBtn
-                            v-bind="tooltipProps"
-                            icon="mdi-minus-circle-outline"
-                            variant="text"
-                            color="error"
-                            :loading="updatingPlan"
-                            @click="removePlanItem(item)"
-                          />
-                        </template>
-                      </VTooltip>
+                          </template>
+                        </VTooltip>
+                      </div>
                     </template>
                   </VDataTable>
                 </div>
@@ -1089,7 +1093,7 @@ onUnmounted(() => {
                 { title: '保种任务', key: 'seed_tasks', width: 110 },
                 { title: '整理记录', key: 'deleted_records', width: 110 },
                 { title: '说明', key: 'message' },
-                { title: '详情', key: 'actions', width: 90, sortable: false },
+                { title: '详情', key: 'actions', width: 90, sortable: false, align: 'center' },
               ]"
               :items="historyRows"
               density="comfortable"
@@ -1108,7 +1112,9 @@ onUnmounted(() => {
                 <span v-if="cleanupRecordStats(item).failedSeedTasks" class="text-error">/{{ cleanupRecordStats(item).failedSeedTasks }} 失败</span>
               </template>
               <template #item.actions="{ item }">
-                <VBtn icon="mdi-file-eye-outline" variant="text" @click="openHistoryDetail(item)" />
+                <div class="mlk-table-actions">
+                  <VBtn icon="mdi-file-eye-outline" variant="text" aria-label="查看清理记录详情" @click="openHistoryDetail(item)" />
+                </div>
               </template>
               <template #no-data>
                 <VEmptyState icon="mdi-history" title="暂无执行记录" text="每次真实清理的结果都会保存在这里。" />
@@ -1219,7 +1225,7 @@ onUnmounted(() => {
             <div class="mlk-settings-group">
               <div class="text-subtitle-1 font-weight-medium">删除行为</div>
               <div class="mlk-switch-grid">
-                <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="允许 AI 参与清理建议排序" disabled />
+                <VSwitch v-model="configDraft.ai_suggestions" color="primary" inset label="AI资源任务识别" />
                 <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
                 <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
               </div>
@@ -1367,7 +1373,6 @@ onUnmounted(() => {
             </div>
             <VDivider />
             <div class="mlk-detail-actions">
-              <VSpacer />
               <VBtn variant="tonal" :color="isSelected(selectedMediaDetail) ? 'success' : 'primary'" @click="toggleSelected(selectedMediaDetail)">
                 {{ isSelected(selectedMediaDetail) ? '移出清理选择' : '加入清理选择' }}
               </VBtn>
@@ -1852,7 +1857,18 @@ onUnmounted(() => {
 }
 
 .mlk-detail-actions {
-  justify-content: flex-end;
+  justify-content: center;
+  min-height: 72px;
+  padding: 16px 0 4px;
+  flex-wrap: wrap;
+}
+
+.mlk-table-actions {
+  min-width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .mlk-detail-summary {
