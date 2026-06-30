@@ -1327,7 +1327,6 @@ onUnmounted(() => {
             </div>
             <VDivider />
             <div class="mlk-detail-actions">
-              <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
               <VSpacer />
               <VBtn variant="tonal" :color="isSelected(selectedMediaDetail) ? 'success' : 'primary'" @click="toggleSelected(selectedMediaDetail)">
                 {{ isSelected(selectedMediaDetail) ? '移出清理选择' : '加入清理选择' }}

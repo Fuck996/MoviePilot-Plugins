@@ -53,6 +53,10 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "filterCleanedMediaFromStatus" in source
     assert "cleanedMediaIdsFromHistory" in source
     assert "pending_plan:" in source
+    detail_actions_source = source.split('<div class="mlk-detail-actions">', 1)[1].split("</div>", 1)[0]
+    assert "deleteSource" not in detail_actions_source
+    assert "默认同时删除源文件" in source
+    assert "同时删除源文件" in source
     assert "background: rgba(var(--v-theme-surface-variant), 0.42);" not in source
     assert "border-right: 1px solid rgba(var(--v-theme-primary), 0.16);" in source
     assert "linear-gradient(180deg, rgba(var(--v-theme-primary), 0.18)" in source
