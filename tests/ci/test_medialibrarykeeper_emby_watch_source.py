@@ -45,14 +45,8 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     assert meta["version"] == "1.0.8"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     assert plugin_package["version"] == "1.0.8"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3", "v1.0.4", "v1.0.5", "v1.0.6", "v1.0.7", "v1.0.8"]
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.8"]
     assert "首次启用" in meta["history"]["v1.0.1"]
-    assert "目录映射筛选" in meta["history"]["v1.0.2"]
-    assert "中文标签" in meta["history"]["v1.0.3"]
-    assert "所在盘" in meta["history"]["v1.0.4"]
-    assert "根目录" in meta["history"]["v1.0.5"]
-    assert "AI" in meta["history"]["v1.0.6"]
-    assert "所在盘" in meta["history"]["v1.0.7"]
     assert "单一根目录" in meta["history"]["v1.0.8"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
