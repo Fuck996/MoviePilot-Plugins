@@ -1481,13 +1481,15 @@ onUnmounted(() => {
                   </VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
                   <VChip v-if="task.task_state" variant="tonal" size="small">{{ task.task_state }}</VChip>
-                  <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
+                  <VChip v-if="task.source || task.source_label" variant="tonal" size="small">{{ task.source_label || task.source }}</VChip>
                 </div>
                 <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
                 <div v-if="downloadTaskHint(task)" class="text-caption text-medium-emphasis">{{ downloadTaskHint(task) }}</div>
                 <div v-if="!downloadTaskMatched(task) && task.title" class="text-caption text-medium-emphasis">历史记录：{{ task.title }}</div>
                 <div class="text-caption text-medium-emphasis">Hash：{{ task.download_hash }}</div>
                 <div v-if="task.save_path" class="text-caption text-medium-emphasis">保存目录：{{ task.save_path }}</div>
+                <div v-if="task.content_path && task.content_path !== task.save_path" class="text-caption text-medium-emphasis">内容路径：{{ task.content_path }}</div>
+                <div v-if="task.related_to_hash" class="text-caption text-medium-emphasis">关联Hash：{{ task.related_to_hash }}</div>
               </div>
             </VSheet>
             <VAlert v-else type="warning" variant="tonal" density="comfortable">

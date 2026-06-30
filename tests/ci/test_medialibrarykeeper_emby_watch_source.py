@@ -155,6 +155,9 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_record_dest_paths" in source
     assert "title.lower() in self._clean_text(getattr(record, \"title\", \"\")).lower()" not in source
     assert "_enrich_download_tasks_from_configured_downloaders" in source
+    assert "_expand_related_download_tasks" in source
+    assert "_related_downloader_torrents" in source
+    assert "_normalized_seed_task_name" in source
     assert "_find_downloader_torrent" in source
     assert "_find_downloader_torrent_via_moviepilot_module" in source
     assert "_find_downloader_torrent_via_get_torrents" in source
@@ -162,6 +165,10 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_query_downloader_torrents" in source
     assert "_downloader_torrent_summary" in source
     assert "module.list_torrents(hashs=hashs, downloader=downloader, include_all_tags=True)" in source
+    assert "module.list_torrents(downloader=downloader, include_all_tags=True)" in source
+    assert '"source_label": "同资源保种"' in source
+    assert '"related_to_hash": download_hash' in source
+    assert "媒体库管家保种任务联动识别" in source
     assert "module.get_torrents(**args)" in source
     assert '"ids": [download_hash]' in source
     assert 'self._object_value(torrent, "title", "name")' in source
@@ -172,6 +179,9 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "EventType.MessageAction" in source
     assert "MESSAGE_ACTION_CONFIRM_CLEANUP" in source
     assert "_confirm_cleanup_plan" in source
+    assert "_matched_record_ids_for_deleted_items" in source
+    assert "媒体库管家整理记录联动清理" in source
+    assert "record_status.setdefault(record_id, True)" in source
     assert "_cleanup_batch_buttons" in source
     assert "_cleanup_page_url" in source
     assert "_cleanup_message_buttons" in source
@@ -232,11 +242,16 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "已定位下载任务，未获取到任务名" in frontend
     assert "执行清理时会按 Hash 到配置下载器中尝试删除" in frontend
     assert "保存目录：" in frontend
+    assert "内容路径：" in frontend
+    assert "关联Hash：" in frontend
     assert "'task_name'" in provider
     assert "'save_path'" in provider
+    assert "'content_path'" in provider
     assert "'task_state'" in provider
     assert "'downloader_match_source'" in provider
     assert "'downloader_lookup_state'" in provider
+    assert "'source_label'" in provider
+    assert "'related_to_hash'" in provider
     assert "_attach_candidate_downloaders" in source
     assert "candidate_downloaders" in frontend
     assert "'candidate_downloaders'" in provider
