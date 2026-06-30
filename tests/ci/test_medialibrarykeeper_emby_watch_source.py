@@ -71,6 +71,10 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "mlk-plan-bar-title" in plan_summary_source
     assert "planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'" in plan_summary_source
     assert "记录丢失" in source
+    assert "有记录" in source
+    assert "mlk-plan-target-title" in source
+    assert "downloadTaskName" in source
+    assert "未知下载器" not in source
     assert "可执行媒体条目" in source
     assert "已匹配媒体条目" not in source
     assert "未找到下载器任务" in source
@@ -142,6 +146,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "buttons=self._cleanup_batch_buttons(plan)" in source
     assert "self._notify_cleanup_batch(plan)" in source
     assert "_post_cleanup_message" in source
+    assert "mtype=NotificationType.Plugin" in source
+    assert "手动整理生成清理批次，准备发送通知" in source
     notify_batch_source = source.split("def _notify_cleanup_batch", 1)[1].split("def _post_cleanup_message", 1)[0]
     assert "NotificationType.MediaServer" not in notify_batch_source
     assert "媒体库管家发送清理通知" in source
@@ -161,6 +167,10 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
+    assert "_attach_candidate_downloaders" in source
+    assert "candidate_downloaders" in frontend
+    assert "'candidate_downloaders'" in provider
+    assert "matched_transfer_records: (item.matched_transfer_records || [])" in provider
     assert "download_tasks: (item.download_tasks || []).map(compactSeedTask)" in provider
     assert "'volume_name'" in provider
     assert "'volume_free_percent'" in provider

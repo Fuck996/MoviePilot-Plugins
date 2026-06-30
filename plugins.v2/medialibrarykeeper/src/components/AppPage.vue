@@ -145,14 +145,21 @@ const planStatusColor = computed(() => {
   return 'error'
 })
 function planItemStatusText(item) {
-  if (item.status === 'ready') return '可执行'
-  if (item.status === 'record_missing') return '记录丢失'
+  if (item.matched_transfer_records?.length) return '有记录'
+  if (item.status === 'record_missing' || item.delete_targets?.length) return '记录丢失'
   return '未匹配'
 }
 function planItemStatusColor(item) {
-  if (item.status === 'ready') return 'success'
+  if (item.matched_transfer_records?.length) return 'success'
   if (item.status === 'record_missing') return 'error'
   return 'warning'
+}
+function downloadTaskName(task) {
+  const candidates = Array.isArray(task.candidate_downloaders) ? task.candidate_downloaders.filter(Boolean) : []
+  return task.downloader || task.original_downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
+}
+function seedCandidateDownloaderName(candidate) {
+  return candidate.downloader || '配置下载器'
 }
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
 const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
@@ -1433,20 +1440,20 @@ onUnmounted(() => {
       <VCard v-if="selectedPlanItem">
         <VCardTitle>审核删除目标</VCardTitle>
         <VCardText>
-          <div class="text-subtitle-2 mb-3">{{ selectedPlanItem.title }}</div>
-          <div class="mlk-target-head mb-3">
+          <div class="mlk-plan-target-title mb-3">
+            <div class="text-subtitle-2">{{ selectedPlanItem.title }}</div>
             <VChip :color="planItemStatusColor(selectedPlanItem)" variant="tonal" size="small">
               {{ planItemStatusText(selectedPlanItem) }}
             </VChip>
-            <span class="text-body-2 text-medium-emphasis">{{ selectedPlanItem.message }}</span>
           </div>
+          <div v-if="selectedPlanItem.message" class="text-body-2 text-medium-emphasis mb-3">{{ selectedPlanItem.message }}</div>
           <div class="mb-5">
             <div class="text-subtitle-2 mb-2">下载器任务</div>
             <VSheet v-if="selectedPlanItem.download_tasks?.length" border rounded class="mlk-target-row">
               <div v-for="task in selectedPlanItem.download_tasks" :key="`${task.downloader}-${task.download_hash}`" class="mlk-download-task-row">
                 <div class="mlk-target-head">
                   <VChip color="success" variant="tonal" size="small">已找到</VChip>
-                  <VChip variant="tonal" size="small">{{ task.downloader || task.original_downloader || '未知下载器' }}</VChip>
+                  <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
                   <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
                 </div>
                 <div class="text-body-2">{{ task.download_hash }}</div>
@@ -1486,7 +1493,7 @@ onUnmounted(() => {
             <VSheet v-for="candidate in selectedPlanItem.seed_candidates" :key="`${candidate.downloader}-${candidate.downloader_path}`" border rounded class="mlk-target-row">
               <div class="mlk-target-head">
                 <VChip color="warning" variant="tonal" size="small">待确认</VChip>
-                <VChip variant="tonal" size="small">{{ candidate.downloader || '未知下载器' }}</VChip>
+                <VChip variant="tonal" size="small">{{ seedCandidateDownloaderName(candidate) }}</VChip>
               </div>
               <div class="text-body-2">{{ candidate.downloader_path }}</div>
               <div class="text-caption text-medium-emphasis">MP 资源路径：{{ candidate.source_path }}</div>
@@ -1919,6 +1926,13 @@ onUnmounted(() => {
 
 .mlk-target-row {
   padding: 12px;
+}
+
+.mlk-plan-target-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .mlk-target-head {

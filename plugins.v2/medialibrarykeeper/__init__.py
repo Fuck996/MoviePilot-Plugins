@@ -50,7 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.45"
+    plugin_version = "0.3.46"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -366,7 +366,17 @@ class MediaLibraryKeeper(_PluginBase):
         plan = self._build_cleanup_plan([media_index[item_id] for item_id in selected_ids], delete_source, source="manual")
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         if self._config.get("notify_enabled"):
+            logger.info(
+                "媒体库管家手动整理生成清理批次，准备发送通知："
+                f"batch={plan.get('batch_id') or plan.get('id')}，items={len(plan.get('items') or [])}，"
+                f"ready={plan.get('ready_count', 0)}"
+            )
             self._notify_cleanup_batch(plan)
+        else:
+            logger.info(
+                "媒体库管家手动整理生成清理批次但通知跳过："
+                f"batch={plan.get('batch_id') or plan.get('id')}，notify_enabled=False"
+            )
         return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
 
     def update_cleanup_plan_items_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
@@ -444,6 +454,7 @@ class MediaLibraryKeeper(_PluginBase):
         title = "【媒体库管家】已确认清理批次" if success else "【媒体库管家】清理批次确认失败"
         self.post_message(
             channel=event_data.get("channel"),
+            mtype=NotificationType.Plugin,
             title=title,
             text=message,
             link=self._cleanup_page_url(),
@@ -1796,9 +1807,9 @@ class MediaLibraryKeeper(_PluginBase):
         if not records and delete_source and delete_targets and not has_source_target:
             status = "record_missing"
         if records and delete_targets:
-            message = "已匹配整理记录，可执行删除。"
+            message = "已匹配整理记录。"
         elif status == "record_missing":
-            message = "整理记录丢失，目录映射只定位到媒体库文件，未找到源文件；不会自动执行。"
+            message = "整理记录丢失，目录映射只定位到媒体库文件，未找到源文件。"
         elif delete_targets:
             dest_count = len([target for target in delete_targets if target.get("kind") == "dest"])
             src_count = len([target for target in delete_targets if target.get("kind") == "src"])
@@ -2201,10 +2212,10 @@ class MediaLibraryKeeper(_PluginBase):
         }
 
     def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
-        return self._dedupe_download_tasks([
+        return self._attach_candidate_downloaders(self._dedupe_download_tasks([
             *self._download_tasks_from_records(records),
             *self._download_tasks_from_history(media, records),
-        ])
+        ]))
 
     def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
         tasks = []
@@ -2338,6 +2349,12 @@ class MediaLibraryKeeper(_PluginBase):
             seen.add(key)
             result.append(task)
         return result
+
+    def _attach_candidate_downloaders(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        candidates = sorted(self._selected_downloader_names())
+        for task in tasks:
+            task["candidate_downloaders"] = candidates
+        return tasks
 
     @staticmethod
     def _path_matches(media_path: str, record_path: str) -> bool:
@@ -2582,6 +2599,7 @@ class MediaLibraryKeeper(_PluginBase):
             f"title={title}，link={self._cleanup_page_url()}，buttons={sum(len(row) for row in buttons or [])}"
         )
         self.post_message(
+            mtype=NotificationType.Plugin,
             title=title,
             text=text,
             link=self._cleanup_page_url(),
