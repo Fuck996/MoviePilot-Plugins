@@ -161,8 +161,26 @@ function compactPlan(plan) {
       delete_targets: (item.delete_targets || []).map(compactDeleteTarget),
       download_tasks: (item.download_tasks || []).map(compactSeedTask),
       seed_candidates: (item.seed_candidates || []).map(compactSeedCandidate),
+      ai_resource_candidates: (item.ai_resource_candidates || []).map(compactAiResourceCandidate),
     })),
   }
+}
+
+function compactAiResourceCandidate(candidate) {
+  return pickFields(candidate, [
+    'title',
+    'media_id',
+    'source_path',
+    'filename',
+    'size',
+    'expected_path',
+    'media_path',
+    'confidence',
+    'reason',
+    'match_source',
+    'match_source_label',
+    'status',
+  ])
 }
 
 function compactSeedCandidate(candidate) {
