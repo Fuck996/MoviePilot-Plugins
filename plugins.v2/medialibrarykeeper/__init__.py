@@ -12,7 +12,7 @@ from fastapi import Body, Depends, HTTPException, Response, status
 from app import schemas
 from app.chain.storage import StorageChain
 from app.core.config import settings
-from app.core.event import eventmanager
+from app.core.event import eventmanager, Event
 from app.core.security import verify_resource_token
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.helper.directory import DirectoryHelper
@@ -50,12 +50,13 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.42"
+    plugin_version = "0.3.43"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
     plugin_order = 48
     auth_level = 1
+    MESSAGE_ACTION_CONFIRM_CLEANUP = "cleanup_confirm:"
 
     DATA_KEY_HISTORY = "history"
     DATA_KEY_PENDING_PLAN = "pending_plan"
@@ -358,6 +359,8 @@ class MediaLibraryKeeper(_PluginBase):
         delete_source = bool(payload.get("delete_source", self._config.get("default_delete_source")))
         plan = self._build_cleanup_plan([media_index[item_id] for item_id in selected_ids], delete_source, source="manual")
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
+        if self._config.get("notify_enabled"):
+            self._notify_cleanup_batch(plan)
         return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
 
     def update_cleanup_plan_items_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
@@ -418,16 +421,50 @@ class MediaLibraryKeeper(_PluginBase):
             return schemas.Response(success=False, message="清理计划不存在或已失效")
         if not confirm:
             return schemas.Response(success=False, message="执行清理前需要在页面确认删除范围。")
-        if self._plan_ready_count(pending_plan) <= 0:
-            return schemas.Response(success=False, message=pending_plan.get("message") or "清理计划没有可执行条目。")
+        success, message = self._confirm_cleanup_plan(plan_id)
+        return schemas.Response(success=success, message=message, data=self.get_status().data)
 
-        self._enqueue_cleanup_plan(pending_plan)
-        self.save_data(self.DATA_KEY_PENDING_PLAN, None)
-        self._ensure_cleanup_worker()
-        return schemas.Response(success=True, message="已加入清理队列，后台执行完成后会写入执行记录。", data=self.get_status().data)
+    @eventmanager.register(EventType.MessageAction)
+    def message_action(self, event: Event):
+        event_data = event.event_data or {}
+        if event_data.get("plugin_id") != self.__class__.__name__:
+            return
+        text = self._clean_text(event_data.get("text"))
+        if not text.startswith(self.MESSAGE_ACTION_CONFIRM_CLEANUP):
+            return
+
+        plan_id = self._clean_text(text.replace(self.MESSAGE_ACTION_CONFIRM_CLEANUP, "", 1))
+        success, message = self._confirm_cleanup_plan(plan_id)
+        title = "【媒体库管家】已确认清理批次" if success else "【媒体库管家】清理批次确认失败"
+        self.post_message(
+            channel=event_data.get("channel"),
+            mtype=NotificationType.MediaServer,
+            title=title,
+            text=message,
+            userid=event_data.get("userid") or event_data.get("user"),
+            buttons=self._cleanup_page_buttons(),
+            original_message_id=event_data.get("original_message_id"),
+            original_chat_id=event_data.get("original_chat_id"),
+        )
 
     def get_history_api(self) -> schemas.Response:
         return schemas.Response(success=True, data={"history": self._load_history()})
+
+    def _confirm_cleanup_plan(self, plan_id: str) -> Tuple[bool, str]:
+        pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
+        clean_plan_id = self._clean_text(plan_id)
+        if not clean_plan_id or pending_plan.get("id") != clean_plan_id:
+            return False, "清理计划不存在或已失效。"
+        if self._plan_ready_count(pending_plan) <= 0:
+            return False, pending_plan.get("message") or "清理计划没有可执行条目。"
+
+        queue_item = self._enqueue_cleanup_plan(pending_plan)
+        self.save_data(self.DATA_KEY_PENDING_PLAN, None)
+        self._ensure_cleanup_worker()
+        return True, (
+            f"已确认批次 {pending_plan.get('batch_id') or pending_plan.get('id')}，"
+            f"加入清理队列 {queue_item.get('id')}；后台执行完成后会写入执行记录。"
+        )
 
     def _enqueue_cleanup_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         with self._queue_lock:
@@ -2453,13 +2490,41 @@ class MediaLibraryKeeper(_PluginBase):
             f"批次：{plan.get('batch_id') or plan.get('id')}",
             f"命中媒体：{len(items)} 个，可执行条目：{plan.get('ready_count', 0)} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
-            "请进入媒体库管家清理计划页增删条目并确认执行。",
+            "请审核删除目标后确认执行；也可以打开媒体库管家页面继续调整批次。",
+            f"页面：{self._cleanup_page_url()}",
         ]
         for item in items[:8]:
-            lines.append(f"- {item.get('title')} / {item.get('library') or item.get('type_label')} / {self._human_size(item.get('size'))}")
+            lines.append(
+                f"- {item.get('title')} / {item.get('library') or item.get('type_label')} / "
+                f"{item.get('message') or item.get('status')}"
+            )
         if len(items) > 8:
             lines.append(f"... 另有 {len(items) - 8} 个媒体")
-        self.post_message(mtype=NotificationType.MediaServer, title="【媒体库管家】清理批次待确认", text="\n".join(lines))
+        self.post_message(
+            mtype=NotificationType.MediaServer,
+            title="【媒体库管家】清理批次待确认",
+            text="\n".join(lines),
+            buttons=self._cleanup_batch_buttons(plan),
+        )
+
+    def _cleanup_batch_buttons(self, plan: Dict[str, Any]) -> List[List[Dict[str, str]]]:
+        buttons = []
+        if self._plan_ready_count(plan) > 0:
+            buttons.append({
+                "text": "确认执行",
+                "callback_data": (
+                    f"[PLUGIN]{self.__class__.__name__}|"
+                    f"{self.MESSAGE_ACTION_CONFIRM_CLEANUP}{plan.get('id')}"
+                ),
+            })
+        buttons.append({"text": "打开清理计划", "url": self._cleanup_page_url()})
+        return [buttons]
+
+    def _cleanup_page_buttons(self) -> List[List[Dict[str, str]]]:
+        return [[{"text": "打开清理计划", "url": self._cleanup_page_url()}]]
+
+    def _cleanup_page_url(self) -> str:
+        return f"#/plugin-app/{self.__class__.__name__}/main"
 
     def _notify_disk_warning(self, snapshot: Dict[str, Any]) -> None:
         if not self._config.get("disk_warning_enabled") or not self._config.get("notify_enabled"):

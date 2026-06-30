@@ -122,6 +122,15 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_normalize_downloader_path_mappings" in source
     assert "_seed_task_candidates_from_targets" in source
     assert "_join_path" in source
+    assert "EventType.MessageAction" in source
+    assert "MESSAGE_ACTION_CONFIRM_CLEANUP" in source
+    assert "_confirm_cleanup_plan" in source
+    assert "_cleanup_batch_buttons" in source
+    assert "_cleanup_page_url" in source
+    assert "#/plugin-app/{self.__class__.__name__}/main" in source
+    assert 'callback_data": (' in source
+    assert "buttons=self._cleanup_batch_buttons(plan)" in source
+    assert "self._notify_cleanup_batch(plan)" in source
     assert 'status = "record_missing"' in source
     assert 'self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])' in source
     assert '"filename": Path(path).name' in source
