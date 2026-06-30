@@ -1979,7 +1979,7 @@ return (_ctx, _cache) => {
                     ])
                   ]),
                   _createElementVNode("div", _hoisted_64, [
-                    _cache[57] || (_cache[57] = _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "扫描与容量告警", -1)),
+                    _cache[57] || (_cache[57] = _createElementVNode("div", { class: "text-subtitle-1 font-weight-medium" }, "扫描和清理计划", -1)),
                     _createElementVNode("div", _hoisted_65, [
                       _createVNode(_component_VSelect, {
                         modelValue: configDraft.value.scan_cron,
@@ -2010,7 +2010,7 @@ return (_ctx, _cache) => {
                       density: "comfortable"
                     }, {
                       default: _withCtx(() => [...(_cache[56] || (_cache[56] = [
-                        _createTextVNode(" 磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘。 ", -1)
+                        _createTextVNode(" 定时任务会先扫描 Emby 媒体库，刷新容量状态和磁盘告警，再按下方清理计划规则生成待确认批次。 ", -1)
                       ]))]),
                       _: 1
                     })
@@ -2297,14 +2297,15 @@ return (_ctx, _cache) => {
                   ]),
                   _createElementVNode("div", _hoisted_76, [
                     _createVNode(_component_VBtn, {
-                      "prepend-icon": "mdi-playlist-search",
-                      color: "secondary",
-                      variant: "tonal",
+                      class: "mlk-rule-scan-btn",
+                      "prepend-icon": "mdi-playlist-plus",
+                      color: "primary",
+                      variant: "flat",
                       loading: ruleScanning.value,
                       onClick: scanCleanupRules
                     }, {
                       default: _withCtx(() => [...(_cache[69] || (_cache[69] = [
-                        _createTextVNode(" 立即按规则扫描 ", -1)
+                        _createTextVNode(" 扫描并生成批次 ", -1)
                       ]))]),
                       _: 1
                     }, 8, ["loading"]),
@@ -3171,6 +3172,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-fb1acfa4"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-771090f9"]]);
 
 export { AppPage as default };
