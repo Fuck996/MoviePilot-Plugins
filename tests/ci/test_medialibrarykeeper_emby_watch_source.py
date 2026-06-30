@@ -70,6 +70,9 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     plan_summary_source = source.split('<div class="mlk-plan-summary">', 1)[1].split('<div class="mlk-plan-actions">', 1)[0]
     assert "mlk-plan-bar-title" in plan_summary_source
     assert "planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'" in plan_summary_source
+    assert "有记录 {{ pendingPlanRecordStats.recorded }}/{{ pendingPlanItems.length }}" in plan_summary_source
+    assert "记录丢失 {{ pendingPlanRecordStats.missing }}" in plan_summary_source
+    assert "部分可执行" not in source
     assert "记录丢失" in source
     assert "有记录" in source
     assert "mlk-plan-target-title" in source
@@ -77,6 +80,7 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "未知下载器" not in source
     assert "AI识别候选源文件" in source
     assert "ai_resource_candidates" in source
+    assert "ai_resource_message" in source
     assert "可执行媒体条目" in source
     assert "已匹配媒体条目" not in source
     assert "未找到下载器任务" in source
@@ -148,7 +152,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "buttons=self._cleanup_batch_buttons(plan)" in source
     assert "self._notify_cleanup_batch(plan)" in source
     assert "_post_cleanup_message" in source
-    assert "mtype=NotificationType.Plugin" in source
+    assert "mtype=NotificationType.Plugin" not in source
+    assert "mtype=default" in source
     assert "手动整理生成清理批次，准备发送通知" in source
     notify_batch_source = source.split("def _notify_cleanup_batch", 1)[1].split("def _post_cleanup_message", 1)[0]
     assert "NotificationType.MediaServer" not in notify_batch_source
@@ -162,14 +167,18 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert '"volume_name": media.get("volume_name")' in source
     assert "_log_cleanup_plan" in source
     assert "_cleanup_plan_recognition_summary" in source
+    assert "ai_called=" in source
     assert "ai_involved=" in source
     assert "ai_result=" in source
     assert "媒体库管家清理计划识别" in source
-    assert "_ai_resource_candidates_for_record_missing" in source
+    assert "_ai_resource_recognition_for_record_missing" in source
     assert "_source_file_candidates_from_directory_mapping" in source
     assert "_select_source_candidates_with_ai" in source
     assert "LLMHelper.get_llm" in source
     assert "ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}" in source
+    assert "ai_resource_state={item.get('ai_resource_state') or '-'}" in source
+    assert "无疑似源文件" in source
+    assert "AI识别失败" in source
     assert "源文件候选" in source
     assert "get_agent_tools" in source
     assert "MediaLibraryKeeperSeedReviewTool" in source

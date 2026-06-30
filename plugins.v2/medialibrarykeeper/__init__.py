@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.47"
+    plugin_version = "0.3.48"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -457,7 +457,6 @@ class MediaLibraryKeeper(_PluginBase):
         title = "【媒体库管家】已确认清理批次" if success else "【媒体库管家】清理批次确认失败"
         self.post_message(
             channel=event_data.get("channel"),
-            mtype=NotificationType.Plugin,
             title=title,
             text=message,
             link=self._cleanup_page_url(),
@@ -1649,7 +1648,8 @@ class MediaLibraryKeeper(_PluginBase):
             f"batch={plan.get('batch_id') or plan.get('id')}，source={plan.get('source')}，"
             f"items={len(plan.get('items') or [])}，ready={plan.get('ready_count', 0)}，"
             f"estimated={self._human_size(plan.get('estimated_reclaim_size'))}，"
-            f"ai_enabled={recognition['ai_enabled']}，ai_involved={recognition['ai_involved']}，"
+            f"ai_enabled={recognition['ai_enabled']}，ai_called={recognition['ai_called']}，"
+            f"ai_involved={recognition['ai_involved']}，"
             f"ai_result={recognition['ai_result']}"
         )
         for item in plan.get("items", []) or []:
@@ -1661,7 +1661,9 @@ class MediaLibraryKeeper(_PluginBase):
                 f"targets={len(item.get('delete_targets') or [])}，target_sources={target_sources}，"
                 f"download_tasks={len(item.get('download_tasks') or [])}，"
                 f"seed_candidates={len(item.get('seed_candidates') or [])}，"
-                f"ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}"
+                f"ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}，"
+                f"ai_resource_state={item.get('ai_resource_state') or '-'}，"
+                f"ai_resource_message={item.get('ai_resource_message') or '-'}"
             )
 
     def _cleanup_plan_recognition_summary(self, plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -1669,18 +1671,35 @@ class MediaLibraryKeeper(_PluginBase):
         targets = [target for item in items for target in item.get("delete_targets", []) or []]
         seed_candidates = [candidate for item in items for candidate in item.get("seed_candidates", []) or []]
         ai_resource_candidates = [candidate for item in items for candidate in item.get("ai_resource_candidates", []) or []]
+        ai_states = [item.get("ai_resource_state") for item in items if item.get("ai_resource_state")]
         ai_targets = [target for target in targets if target.get("match_source") == "ai_resource_recognition"]
         ai_candidates = [candidate for candidate in seed_candidates if candidate.get("match_source") == "ai_resource_recognition"]
         ai_involved = bool(ai_targets or ai_candidates or ai_resource_candidates)
+        ai_called = ai_involved or any(state in {"ai_failed", "no_ai_match"} for state in ai_states)
         if ai_involved:
             ai_result = f"AI识别目标 {len(ai_targets)} 个，保种候选 {len(ai_candidates)} 个，源文件候选 {len(ai_resource_candidates)} 个"
         elif self._config.get("ai_suggestions"):
-            ai_result = f"AI未参与；当前批次生成保种排查候选 {len(seed_candidates)} 个，需用户确认"
+            details = []
+            no_source_count = ai_states.count("no_source_candidates")
+            failed_count = ai_states.count("ai_failed")
+            no_match_count = ai_states.count("no_ai_match")
+            if no_source_count:
+                details.append(f"无疑似源文件 {no_source_count} 个")
+            if failed_count:
+                details.append(f"AI识别失败 {failed_count} 个")
+            if no_match_count:
+                details.append(f"AI未选中可信候选 {no_match_count} 个")
+            if not details:
+                details.append("本批次无需要 AI 判断的记录丢失条目")
+            if seed_candidates:
+                details.append(f"保种排查候选 {len(seed_candidates)} 个需用户确认")
+            ai_result = "；".join(details)
         else:
             ai_result = "AI未启用"
         return {
             "ai_enabled": bool(self._config.get("ai_suggestions")),
             "ai_involved": ai_involved,
+            "ai_called": ai_called,
             "ai_result": ai_result,
         }
 
@@ -1807,13 +1826,18 @@ class MediaLibraryKeeper(_PluginBase):
         download_tasks = self._download_tasks_for_media(media, records)
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
         ai_resource_candidates: List[Dict[str, Any]] = []
+        ai_resource_state = ""
+        ai_resource_message = ""
 
         has_source_target = any(target.get("kind") == "src" for target in delete_targets)
         status = "ready" if delete_targets else "no_match"
         if not records and delete_source and delete_targets and not has_source_target:
             status = "record_missing"
             if self._config.get("ai_suggestions"):
-                ai_resource_candidates = self._ai_resource_candidates_for_record_missing(media, delete_targets)
+                ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets)
+                ai_resource_candidates = ai_result["candidates"]
+                ai_resource_state = ai_result["state"]
+                ai_resource_message = ai_result["message"]
         if records and delete_targets:
             message = "已匹配整理记录。"
         elif status == "record_missing":
@@ -1845,6 +1869,8 @@ class MediaLibraryKeeper(_PluginBase):
             "download_tasks": download_tasks,
             "seed_candidates": seed_candidates,
             "ai_resource_candidates": ai_resource_candidates,
+            "ai_resource_state": ai_resource_state,
+            "ai_resource_message": ai_resource_message,
             "delete_targets": self._dedupe_targets(delete_targets),
             "status": status,
             "message": message,
@@ -1891,18 +1917,22 @@ class MediaLibraryKeeper(_PluginBase):
                 })
         return candidates
 
-    def _ai_resource_candidates_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _ai_resource_recognition_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> Dict[str, Any]:
         source_candidates = self._source_file_candidates_from_directory_mapping(media, targets)
         if not source_candidates:
             logger.info(f"媒体库管家 AI资源任务识别：title={media.get('title')}，未找到可交给 AI 判断的疑似源文件")
-            return []
-        ai_selected = self._select_source_candidates_with_ai(media, source_candidates)
+            return {"state": "no_source_candidates", "message": "无疑似源文件", "candidates": []}
+        ai_selected, error = self._select_source_candidates_with_ai(media, source_candidates)
+        if error:
+            return {"state": "ai_failed", "message": f"AI识别失败：{error}", "candidates": []}
+        state = "selected" if ai_selected else "no_ai_match"
+        message = f"AI识别到 {len(ai_selected)} 个候选源文件" if ai_selected else "AI未选中可信候选源文件"
         logger.info(
             "媒体库管家 AI资源任务识别结果："
             f"title={media.get('title')}，candidates={len(source_candidates)}，selected={len(ai_selected)}，"
             f"result={self._json_dumps(ai_selected[:5])}"
         )
-        return ai_selected
+        return {"state": state, "message": message, "candidates": ai_selected}
 
     def _source_file_candidates_from_directory_mapping(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         storage = StorageChain()
@@ -1952,14 +1982,15 @@ class MediaLibraryKeeper(_PluginBase):
                 })
         return sorted(candidates, key=lambda item: item.get("size") or 0, reverse=True)[:20]
 
-    def _select_source_candidates_with_ai(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _select_source_candidates_with_ai(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], str]:
         try:
             response_text = self._run_async(self._ask_llm_for_source_candidates(media, candidates))
             selected = self._parse_ai_candidate_response(response_text, candidates)
         except Exception as err:
-            logger.warning(f"媒体库管家 AI资源任务识别调用失败：title={media.get('title')}，error={err}")
-            return []
-        return selected
+            error = self._clean_text(err)
+            logger.warning(f"媒体库管家 AI资源任务识别调用失败：title={media.get('title')}，error={error}")
+            return [], error
+        return selected, ""
 
     async def _ask_llm_for_source_candidates(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> str:
         from app.agent.llm import LLMHelper
@@ -2737,9 +2768,11 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _notify_cleanup_batch(self, plan: Dict[str, Any]) -> None:
         items = plan.get("items") or []
+        recorded_count = len([item for item in items if item.get("matched_transfer_records")])
+        missing_count = max(0, len(items) - recorded_count)
         lines = [
             f"批次：{plan.get('batch_id') or plan.get('id')}",
-            f"命中媒体：{len(items)} 个，可执行条目：{plan.get('ready_count', 0)} 个",
+            f"命中媒体：{len(items)} 个，有记录：{recorded_count} 个，记录丢失：{missing_count} 个",
             f"预计可释放：{self._human_size(plan.get('estimated_reclaim_size'))}",
             "请审核删除目标后确认执行；也可以打开媒体库管家页面继续调整批次。",
             f"页面：{self._cleanup_page_url()}",
@@ -2760,10 +2793,9 @@ class MediaLibraryKeeper(_PluginBase):
     def _post_cleanup_message(self, title: str, text: str, buttons: Optional[List[List[Dict[str, str]]]] = None, **kwargs) -> None:
         logger.info(
             "媒体库管家发送清理通知："
-            f"title={title}，link={self._cleanup_page_url()}，buttons={sum(len(row) for row in buttons or [])}"
+            f"title={title}，link={self._cleanup_page_url()}，buttons={sum(len(row) for row in buttons or [])}，mtype=default"
         )
         self.post_message(
-            mtype=NotificationType.Plugin,
             title=title,
             text=text,
             link=self._cleanup_page_url(),
@@ -3242,7 +3274,7 @@ class MediaLibraryKeeper(_PluginBase):
         if status == "ready":
             return "清理计划已生成，所有条目均匹配到可删除文件。执行前请再次确认删除范围。"
         blocked = len([item for item in items if item.get("status") != "ready"])
-        return f"清理计划存在 {blocked} 个未定位到删除文件的条目，已阻止真实删除。"
+        return f"清理计划存在 {blocked} 个记录丢失条目，请展开明细核对。"
 
     @staticmethod
     def _path_preview(path: Any) -> str:

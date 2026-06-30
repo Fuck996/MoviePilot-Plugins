@@ -97,6 +97,14 @@ const pendingPlanStats = computed(() => pendingPlanItems.value.reduce((stats, it
   stats.size += Number(item.size || 0)
   return stats
 }, { movies: 0, series: 0, size: 0 }))
+const pendingPlanRecordStats = computed(() => pendingPlanItems.value.reduce((stats, item) => {
+  if (item.matched_transfer_records?.length) {
+    stats.recorded += 1
+  } else {
+    stats.missing += 1
+  }
+  return stats
+}, { recorded: 0, missing: 0 }))
 const historyRows = computed(() => status.value.history || [])
 const capabilities = computed(() => status.value.capabilities || {})
 const mediaServerOptions = computed(() => status.value.media_server_options || [])
@@ -132,18 +140,7 @@ function resolveImageUrl(url) {
   return `${String(baseURL).replace(/\/$/, '')}/${String(url).replace(/^\//, '')}`
 }
 const selectedSize = computed(() => selectedMedia.value.reduce((sum, item) => sum + Number(item.size || 0), 0))
-const planReady = computed(() => pendingPlan.value?.status === 'ready')
 const planExecutable = computed(() => Number(pendingPlan.value?.ready_count || 0) > 0)
-const planStatusText = computed(() => {
-  if (planReady.value) return '可执行'
-  if (planExecutable.value) return '部分可执行'
-  return '需处理'
-})
-const planStatusColor = computed(() => {
-  if (planReady.value) return 'success'
-  if (planExecutable.value) return 'warning'
-  return 'error'
-})
 function planItemStatusText(item) {
   if (item.matched_transfer_records?.length) return '有记录'
   if (item.status === 'record_missing' || item.delete_targets?.length) return '记录丢失'
@@ -1015,9 +1012,9 @@ onUnmounted(() => {
                   <div class="mlk-chip-row">
                     <VChip size="small" variant="tonal" color="info">电影 {{ pendingPlanStats.movies }}</VChip>
                     <VChip size="small" variant="tonal" color="success">剧集 {{ pendingPlanStats.series }}</VChip>
-                    <VChip size="small" variant="tonal" color="primary">可执行 {{ pendingPlan.ready_count || 0 }}/{{ pendingPlanItems.length }}</VChip>
+                    <VChip size="small" variant="tonal" color="primary">有记录 {{ pendingPlanRecordStats.recorded }}/{{ pendingPlanItems.length }}</VChip>
+                    <VChip v-if="pendingPlanRecordStats.missing" size="small" variant="tonal" color="warning">记录丢失 {{ pendingPlanRecordStats.missing }}</VChip>
                     <VChip size="small" variant="tonal" color="warning">预计释放 {{ formatBytes(pendingPlan.estimated_reclaim_size || pendingPlanStats.size) }}</VChip>
-                    <VChip :color="planStatusColor" size="small" variant="tonal">{{ planStatusText }}</VChip>
                   </div>
                 </div>
                 <div class="mlk-plan-actions">
@@ -1447,6 +1444,15 @@ onUnmounted(() => {
             </VChip>
           </div>
           <div v-if="selectedPlanItem.message" class="text-body-2 text-medium-emphasis mb-3">{{ selectedPlanItem.message }}</div>
+          <VAlert
+            v-if="selectedPlanItem.ai_resource_message && !selectedPlanItem.ai_resource_candidates?.length"
+            type="info"
+            variant="tonal"
+            density="comfortable"
+            class="mb-3"
+          >
+            AI资源任务识别：{{ selectedPlanItem.ai_resource_message }}
+          </VAlert>
           <div class="mb-5">
             <div class="text-subtitle-2 mb-2">下载器任务</div>
             <VSheet v-if="selectedPlanItem.download_tasks?.length" border rounded class="mlk-target-row">
