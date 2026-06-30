@@ -40,12 +40,12 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.7"' in source
+    assert 'plugin_version = "1.0.8"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.7"
+    assert meta["version"] == "1.0.8"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.7"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3", "v1.0.4", "v1.0.5", "v1.0.6", "v1.0.7"]
+    assert plugin_package["version"] == "1.0.8"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3", "v1.0.4", "v1.0.5", "v1.0.6", "v1.0.7", "v1.0.8"]
     assert "首次启用" in meta["history"]["v1.0.1"]
     assert "目录映射筛选" in meta["history"]["v1.0.2"]
     assert "中文标签" in meta["history"]["v1.0.3"]
@@ -53,6 +53,7 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     assert "根目录" in meta["history"]["v1.0.5"]
     assert "AI" in meta["history"]["v1.0.6"]
     assert "所在盘" in meta["history"]["v1.0.7"]
+    assert "单一根目录" in meta["history"]["v1.0.8"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -136,10 +137,14 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "directoryFilterEntries" in source
     assert "directoryFilterTitle(name, rootPath)" in source
     assert "function directoryFilterTitle" in source
+    assert "mediaDirectoryFilterKey(item)" in source
+    assert "function mediaDirectoryFilterKey" in source
+    assert "uniqueRoots.length === 1" in source
     assert "cleanName === pathName" in source
     assert "root_directories" in source
-    assert "roots.includes(selectedDirectoryFilter.value)" in source
+    assert "mediaDirectoryFilterKey(item) === selectedDirectoryFilter.value" in source
     directory_filter_source = source.split("function mediaMatchesDirectoryFilter", 1)[1].split("function mediaAddedLabelText", 1)[0]
+    assert "includes(selectedDirectoryFilter.value)" not in directory_filter_source
     assert "startsWith" not in directory_filter_source
     assert "item.path_preview" not in directory_filter_source
     assert "volumeDirectoryOptions" not in source

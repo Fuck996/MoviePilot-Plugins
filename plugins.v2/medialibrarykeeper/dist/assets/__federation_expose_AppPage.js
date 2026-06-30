@@ -476,16 +476,16 @@ const directoryFilterOptions = computed(() => [
 const directoryFilterEntries = computed(() => {
   const options = new Map();
   for (const item of [...mediaRows.value, ...recommendationRows.value]) {
-    for (const root of Array.isArray(item.root_directories) ? item.root_directories : []) {
-      const rootPath = normalizeFilterPath(root.path);
-      if (!rootPath || options.has(rootPath)) continue
-      const name = root.name || rootPath;
-      options.set(rootPath, {
-        title: directoryFilterTitle(name, rootPath),
-        value: rootPath,
-        rootPath,
-      });
-    }
+    const rootPath = mediaDirectoryFilterKey(item);
+    if (!rootPath || options.has(rootPath)) continue
+    const root = (Array.isArray(item.root_directories) ? item.root_directories : [])
+      .find(entry => normalizeFilterPath(entry.path) === rootPath) || {};
+    const name = root.name || rootPath;
+    options.set(rootPath, {
+      title: directoryFilterTitle(name, rootPath),
+      value: rootPath,
+      rootPath,
+    });
   }
   return [...options.values()].sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'))
 });
@@ -638,10 +638,15 @@ function directoryFilterTitle(name, rootPath) {
 
 function mediaMatchesDirectoryFilter(item) {
   if (!selectedDirectoryFilter.value) return true
+  return mediaDirectoryFilterKey(item) === selectedDirectoryFilter.value
+}
+
+function mediaDirectoryFilterKey(item) {
   const roots = (Array.isArray(item.root_directories) ? item.root_directories : [])
     .map(root => normalizeFilterPath(root.path))
     .filter(Boolean);
-  return roots.includes(selectedDirectoryFilter.value)
+  const uniqueRoots = [...new Set(roots)];
+  return uniqueRoots.length === 1 ? uniqueRoots[0] : ''
 }
 
 function sortValue(item, key) {
@@ -3553,6 +3558,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-439b321f"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d7a89efe"]]);
 
 export { AppPage as default };
