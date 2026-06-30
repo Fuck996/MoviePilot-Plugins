@@ -155,6 +155,9 @@ function downloadTaskName(task) {
   const candidates = Array.isArray(task.candidate_downloaders) ? task.candidate_downloaders.filter(Boolean) : []
   return task.downloader || task.original_downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
 }
+function downloadTaskTitle(task) {
+  return task.task_name || task.title || task.download_hash || '-'
+}
 function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
 }
@@ -1460,9 +1463,12 @@ onUnmounted(() => {
                 <div class="mlk-target-head">
                   <VChip color="success" variant="tonal" size="small">已找到</VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
+                  <VChip v-if="task.task_state" variant="tonal" size="small">{{ task.task_state }}</VChip>
                   <VChip v-if="task.source" variant="tonal" size="small">{{ task.source }}</VChip>
                 </div>
-                <div class="text-body-2">{{ task.download_hash }}</div>
+                <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
+                <div class="text-caption text-medium-emphasis">Hash：{{ task.download_hash }}</div>
+                <div v-if="task.save_path" class="text-caption text-medium-emphasis">保存目录：{{ task.save_path }}</div>
               </div>
             </VSheet>
             <VAlert v-else type="warning" variant="tonal" density="comfortable">
@@ -1609,6 +1615,7 @@ onUnmounted(() => {
                 原 {{ item.original_downloader }}
               </div>
             </template>
+            <template #item.title="{ item }">{{ downloadTaskTitle(item) }}</template>
             <template #item.download_hash="{ item }">{{ item.download_hash ? `${item.download_hash.slice(0, 16)}...` : '-' }}</template>
             <template #item.result="{ item }">
               <VChip :color="item.result === 'success' ? 'success' : 'error'" variant="tonal" size="small">

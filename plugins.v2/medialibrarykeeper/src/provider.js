@@ -273,6 +273,11 @@ function compactSeedTask(task) {
     'downloader_type',
     'candidate_downloaders',
     'download_hash',
+    'task_name',
+    'save_path',
+    'task_state',
+    'task_size',
+    'matched_downloader',
     'source',
     'error',
   ])

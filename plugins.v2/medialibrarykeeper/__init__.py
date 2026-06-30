@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.50"
+    plugin_version = "0.3.51"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -2332,12 +2332,20 @@ class MediaLibraryKeeper(_PluginBase):
             if tmdbid and str(getattr(record, "tmdbid", "") or "") == tmdbid:
                 matched.append(record)
                 continue
-            if any(self._path_matches(path, getattr(record, "dest", "")) for path in paths):
-                matched.append(record)
-                continue
-            if title and title.lower() in self._clean_text(getattr(record, "title", "")).lower():
+            if any(
+                self._path_matches(path, record_path)
+                for path in paths
+                for record_path in self._record_dest_paths(record)
+            ):
                 matched.append(record)
         return self._dedupe_records(matched)
+
+    def _record_dest_paths(self, record: Any) -> List[str]:
+        paths = [self._clean_text(getattr(record, "dest", ""))]
+        fileitem = getattr(record, "dest_fileitem", None)
+        if isinstance(fileitem, dict):
+            paths.append(self._clean_text(fileitem.get("path")))
+        return [path for path in paths if path]
 
     @staticmethod
     def _dedupe_records(records: List[Any]) -> List[Any]:
@@ -2412,10 +2420,11 @@ class MediaLibraryKeeper(_PluginBase):
         }
 
     def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
-        return self._attach_candidate_downloaders(self._dedupe_download_tasks([
+        tasks = self._attach_candidate_downloaders(self._dedupe_download_tasks([
             *self._download_tasks_from_records(records),
             *self._download_tasks_from_history(media, records),
         ]))
+        return self._enrich_download_tasks_from_configured_downloaders(tasks)
 
     def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
         tasks = []
@@ -2543,7 +2552,7 @@ class MediaLibraryKeeper(_PluginBase):
         result = []
         seen = set()
         for task in tasks:
-            key = task.get("download_hash")
+            key = str(task.get("download_hash") or "").lower()
             if not key or key in seen:
                 continue
             seen.add(key)
@@ -2555,6 +2564,86 @@ class MediaLibraryKeeper(_PluginBase):
         for task in tasks:
             task["candidate_downloaders"] = candidates
         return tasks
+
+    def _enrich_download_tasks_from_configured_downloaders(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not tasks:
+            return tasks
+        candidates = self._configured_seed_cleanup_downloaders(DownloaderHelper())
+        for task in tasks:
+            download_hash = self._clean_text(task.get("download_hash"))
+            if not download_hash:
+                continue
+            for downloader, service_info in candidates:
+                module = getattr(service_info, "module", None)
+                if not module or not hasattr(module, "get_torrents"):
+                    continue
+                torrent = self._find_downloader_torrent(module, download_hash)
+                if not torrent:
+                    continue
+                summary = self._downloader_torrent_summary(torrent)
+                task.update({
+                    "downloader": downloader,
+                    "downloader_type": self._clean_text(getattr(service_info, "type", "")),
+                    "task_name": summary.get("name") or task.get("title") or download_hash,
+                    "save_path": summary.get("save_path"),
+                    "task_state": summary.get("state"),
+                    "task_size": summary.get("size"),
+                    "matched_downloader": downloader,
+                })
+                logger.info(
+                    f"媒体库管家保种任务识别：hash={download_hash}，downloader={downloader}，"
+                    f"task_name={task.get('task_name')}"
+                )
+                break
+        return tasks
+
+    def _find_downloader_torrent(self, module: Any, download_hash: str) -> Optional[Any]:
+        try:
+            result = module.get_torrents(ids=download_hash)
+        except Exception as err:
+            logger.warning(f"媒体库管家保种任务识别读取下载器失败：hash={download_hash}，error={err}")
+            return None
+        if isinstance(result, tuple):
+            torrents, has_error = result
+            if has_error:
+                logger.warning(f"媒体库管家保种任务识别读取下载器返回错误：hash={download_hash}")
+                return None
+        else:
+            torrents = result
+        if not torrents:
+            return None
+        clean_hash = download_hash.lower()
+        for torrent in torrents:
+            torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
+            if not torrent_hash or torrent_hash == clean_hash:
+                return torrent
+        return None
+
+    def _downloader_torrent_summary(self, torrent: Any) -> Dict[str, Any]:
+        return {
+            "name": self._clean_text(self._object_value(torrent, "name", "title")),
+            "save_path": self._clean_text(self._object_value(torrent, "save_path", "savePath", "downloadDir", "download_dir")),
+            "state": self._clean_text(self._object_value(torrent, "state", "status")),
+            "size": self._to_int(self._object_value(torrent, "size", "totalSize", "total_size"), 0),
+        }
+
+    @staticmethod
+    def _object_value(source: Any, *keys: str) -> Any:
+        for key in keys:
+            if isinstance(source, dict) and key in source:
+                return source.get(key)
+            if hasattr(source, "get"):
+                try:
+                    value = source.get(key)
+                    if value not in (None, ""):
+                        return value
+                except Exception:
+                    pass
+            if hasattr(source, key):
+                value = getattr(source, key)
+                if value not in (None, ""):
+                    return value
+        return None
 
     @staticmethod
     def _path_matches(media_path: str, record_path: str) -> bool:

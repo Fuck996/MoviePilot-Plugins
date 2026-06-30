@@ -134,7 +134,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "SUPPORTED_DOWNLOADER_TYPES" not in record_task_source
     assert "SUPPORTED_DOWNLOADER_TYPES" not in history_task_source
     assert '"original_downloader": downloader' in source
-    assert 'key = task.get("download_hash")' in source
+    assert 'key = str(task.get("download_hash") or "").lower()' in source
     assert 'module.remove_torrents(' in source
     assert 'downloader=downloader' in source
     assert "媒体库管家保种任务删除开始" in source
@@ -148,6 +148,13 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "_normalize_downloader_path_mappings" in source
     assert "_seed_task_candidates_from_targets" in source
     assert "_join_path" in source
+    assert "_record_dest_paths" in source
+    assert "title.lower() in self._clean_text(getattr(record, \"title\", \"\")).lower()" not in source
+    assert "_enrich_download_tasks_from_configured_downloaders" in source
+    assert "_find_downloader_torrent" in source
+    assert "_downloader_torrent_summary" in source
+    assert "module.get_torrents(ids=download_hash)" in source
+    assert '"task_name": summary.get("name")' in source
     assert "EventType.MessageAction" in source
     assert "MESSAGE_ACTION_CONFIRM_CLEANUP" in source
     assert "_confirm_cleanup_plan" in source
@@ -198,6 +205,11 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
+    assert "downloadTaskTitle" in frontend
+    assert "保存目录：" in frontend
+    assert "'task_name'" in provider
+    assert "'save_path'" in provider
+    assert "'task_state'" in provider
     assert "_attach_candidate_downloaders" in source
     assert "candidate_downloaders" in frontend
     assert "'candidate_downloaders'" in provider
