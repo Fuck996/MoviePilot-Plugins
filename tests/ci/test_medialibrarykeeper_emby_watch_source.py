@@ -40,14 +40,15 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.2"' in source
+    assert 'plugin_version = "1.0.3"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.2"
+    assert meta["version"] == "1.0.3"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.2"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2"]
+    assert plugin_package["version"] == "1.0.3"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3"]
     assert "首次启用" in meta["history"]["v1.0.1"]
     assert "目录映射筛选" in meta["history"]["v1.0.2"]
+    assert "中文标签" in meta["history"]["v1.0.3"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -321,6 +322,12 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "downloadTaskTitle" in frontend
     assert "downloadTaskMatched" in frontend
     assert "downloadTaskStatusText" in frontend
+    assert "downloadTaskStateText" in frontend
+    assert "downloadTaskSourceText" in frontend
+    assert "paused: '已暂停'" in frontend
+    assert "transfer_history: '整理记录'" in frontend
+    assert "{{ task.task_state }}" not in frontend
+    assert "{{ task.source_label || task.source }}" not in frontend
     assert "downloadTaskHint" in frontend
     assert "历史Hash" in frontend
     assert "未读取到配置下载器实时任务信息" in frontend

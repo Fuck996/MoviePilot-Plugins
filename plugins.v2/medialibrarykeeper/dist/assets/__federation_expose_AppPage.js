@@ -410,6 +410,36 @@ function downloadTaskStatusText(task) {
   if (!downloadTaskMatched(task)) return '历史Hash'
   return task.task_name ? '已找到' : '已定位'
 }
+function downloadTaskStateText(task) {
+  const state = String(task.task_state || '').trim();
+  const labels = {
+    paused: '已暂停',
+    stopped: '已停止',
+    downloading: '下载中',
+    stalledDL: '下载停滞',
+    uploading: '保种中',
+    stalledUP: '保种停滞',
+    checkingUP: '校验中',
+    checkingDL: '校验中',
+    queuedUP: '保种排队',
+    queuedDL: '下载排队',
+    error: '错误',
+    missingFiles: '文件缺失',
+  };
+  return labels[state] || state
+}
+function downloadTaskSourceText(task) {
+  const source = String(task.source_label || task.source || '').trim();
+  const labels = {
+    transfer_history: '整理记录',
+    download_history: '下载历史',
+    transfer_record: '整理记录',
+    seed_candidate: '保种候选',
+    related_seed: '同资源保种',
+    history_hash: '历史Hash',
+  };
+  return labels[source] || source
+}
 function downloadTaskHint(task) {
   if (downloadTaskMatched(task)) {
     return task.task_name ? '' : '下载器接口已按 Hash 定位任务，但未返回任务名。'
@@ -2765,26 +2795,26 @@ return (_ctx, _cache) => {
                                       ]),
                                       _: 2
                                     }, 1024),
-                                    (task.task_state)
+                                    (downloadTaskStateText(task))
                                       ? (_openBlock(), _createBlock(_component_VChip, {
                                           key: 0,
                                           variant: "tonal",
                                           size: "small"
                                         }, {
                                           default: _withCtx(() => [
-                                            _createTextVNode(_toDisplayString(task.task_state), 1)
+                                            _createTextVNode(_toDisplayString(downloadTaskStateText(task)), 1)
                                           ]),
                                           _: 2
                                         }, 1024))
                                       : _createCommentVNode("", true),
-                                    (task.source || task.source_label)
+                                    (downloadTaskSourceText(task))
                                       ? (_openBlock(), _createBlock(_component_VChip, {
                                           key: 1,
                                           variant: "tonal",
                                           size: "small"
                                         }, {
                                           default: _withCtx(() => [
-                                            _createTextVNode(_toDisplayString(task.source_label || task.source), 1)
+                                            _createTextVNode(_toDisplayString(downloadTaskSourceText(task)), 1)
                                           ]),
                                           _: 2
                                         }, 1024))
@@ -3443,6 +3473,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-a401a616"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-7470ad08"]]);
 
 export { AppPage as default };

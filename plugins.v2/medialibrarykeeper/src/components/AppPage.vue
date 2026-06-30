@@ -184,6 +184,36 @@ function downloadTaskStatusText(task) {
   if (!downloadTaskMatched(task)) return '历史Hash'
   return task.task_name ? '已找到' : '已定位'
 }
+function downloadTaskStateText(task) {
+  const state = String(task.task_state || '').trim()
+  const labels = {
+    paused: '已暂停',
+    stopped: '已停止',
+    downloading: '下载中',
+    stalledDL: '下载停滞',
+    uploading: '保种中',
+    stalledUP: '保种停滞',
+    checkingUP: '校验中',
+    checkingDL: '校验中',
+    queuedUP: '保种排队',
+    queuedDL: '下载排队',
+    error: '错误',
+    missingFiles: '文件缺失',
+  }
+  return labels[state] || state
+}
+function downloadTaskSourceText(task) {
+  const source = String(task.source_label || task.source || '').trim()
+  const labels = {
+    transfer_history: '整理记录',
+    download_history: '下载历史',
+    transfer_record: '整理记录',
+    seed_candidate: '保种候选',
+    related_seed: '同资源保种',
+    history_hash: '历史Hash',
+  }
+  return labels[source] || source
+}
 function downloadTaskHint(task) {
   if (downloadTaskMatched(task)) {
     return task.task_name ? '' : '下载器接口已按 Hash 定位任务，但未返回任务名。'
@@ -1627,8 +1657,8 @@ onUnmounted(() => {
                     {{ downloadTaskStatusText(task) }}
                   </VChip>
                   <VChip variant="tonal" size="small">{{ downloadTaskName(task) }}</VChip>
-                  <VChip v-if="task.task_state" variant="tonal" size="small">{{ task.task_state }}</VChip>
-                  <VChip v-if="task.source || task.source_label" variant="tonal" size="small">{{ task.source_label || task.source }}</VChip>
+                  <VChip v-if="downloadTaskStateText(task)" variant="tonal" size="small">{{ downloadTaskStateText(task) }}</VChip>
+                  <VChip v-if="downloadTaskSourceText(task)" variant="tonal" size="small">{{ downloadTaskSourceText(task) }}</VChip>
                 </div>
                 <div class="text-body-2 font-weight-medium">{{ downloadTaskTitle(task) }}</div>
                 <div v-if="downloadTaskHint(task)" class="text-caption text-medium-emphasis">{{ downloadTaskHint(task) }}</div>
