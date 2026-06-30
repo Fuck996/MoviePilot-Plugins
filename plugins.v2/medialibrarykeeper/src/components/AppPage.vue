@@ -489,13 +489,11 @@ function cleanupRecordStats(item) {
 
 function queueStatusColor(item) {
   if (item.status === 'running') return 'info'
-  if (item.status === 'skipped') return 'warning'
   return 'warning'
 }
 
 function queueStatusText(item) {
   if (item.status === 'running') return '执行中'
-  if (item.status === 'skipped') return '跳过'
   return '排队中'
 }
 
@@ -1903,9 +1901,6 @@ onUnmounted(() => {
             本次计划将删除 {{ pendingPlan?.ready_count || 0 }} 个可执行媒体条目关联文件，预计释放
             {{ formatBytes(pendingPlan?.estimated_reclaim_size) }}。执行成功后会删除对应整理记录。
           </div>
-          <VAlert v-if="pendingPlan && (pendingPlan.ready_count || 0) < pendingPlanItems.length" type="info" variant="tonal" density="comfortable" class="mt-4">
-            批次中还有 {{ pendingPlanItems.length - (pendingPlan.ready_count || 0) }} 个不可执行条目，本次不会执行这些条目。
-          </VAlert>
           <VAlert type="warning" variant="tonal" density="comfortable" class="mt-4">
             这是不可逆操作；请确认媒体库文件和源文件范围都符合预期。
           </VAlert>

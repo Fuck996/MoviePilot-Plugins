@@ -40,14 +40,14 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.9"' in source
+    assert 'plugin_version = "1.0.10"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.9"
+    assert meta["version"] == "1.0.10"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.9"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.9"]
+    assert plugin_package["version"] == "1.0.10"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.10"]
     assert "首次启用" in meta["history"]["v1.0.1"]
-    assert "清理队列" in meta["history"]["v1.0.9"]
+    assert "源文件记录缺失" in meta["history"]["v1.0.10"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -222,6 +222,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "DATA_KEY_CLEANUP_QUEUE" in source
     assert "_enqueue_cleanup_plan" in source
     assert "_queue_media_status" in source
+    assert 'if media.get("status") != "ready":' in source
     assert '"directory": media.get("volume_name") or media.get("volume_summary") or ""' in source
     assert '"file_count": len(delete_targets)' in source
     assert '"estimated_reclaim_size": self._sum_target_size(delete_targets) or int(media.get("size") or 0)' in source
@@ -312,7 +313,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "未配置 MoviePilot 外部访问地址，无法生成审核跳转按钮。" in notify_batch_source
     assert "媒体库管家发送清理通知" in source
     assert "媒体库管家手动检查未发送清理批次通知" in source
-    assert 'status = "record_missing"' in source
+    assert 'status = "record_missing"' not in source
+    assert "source_record_missing" in source
     assert 'self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])' in source
     assert '"filename": Path(path).name' in source
     assert '"match_source_label": "目录映射识别"' in source
@@ -400,6 +402,8 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend
     assert "cleanupQueueRows" in frontend
+    assert "skipped" not in frontend
+    assert "跳过" not in frontend
     assert "{ title: '媒体名称', key: 'title'" in frontend
     assert "{ title: '所属批次', key: 'batch_id'" in frontend
     assert "{ title: '所属目录', key: 'directory'" in frontend

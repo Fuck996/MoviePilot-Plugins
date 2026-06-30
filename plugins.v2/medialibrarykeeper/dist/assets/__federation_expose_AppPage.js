@@ -715,13 +715,11 @@ function cleanupRecordStats(item) {
 
 function queueStatusColor(item) {
   if (item.status === 'running') return 'info'
-  if (item.status === 'skipped') return 'warning'
   return 'warning'
 }
 
 function queueStatusText(item) {
   if (item.status === 'running') return '执行中'
-  if (item.status === 'skipped') return '跳过'
   return '排队中'
 }
 
@@ -3418,20 +3416,6 @@ return (_ctx, _cache) => {
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
                 _createElementVNode("div", _hoisted_138, " 本次计划将删除 " + _toDisplayString(pendingPlan.value?.ready_count || 0) + " 个可执行媒体条目关联文件，预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value?.estimated_reclaim_size)) + "。执行成功后会删除对应整理记录。 ", 1),
-                (pendingPlan.value && (pendingPlan.value.ready_count || 0) < pendingPlanItems.value.length)
-                  ? (_openBlock(), _createBlock(_component_VAlert, {
-                      key: 0,
-                      type: "info",
-                      variant: "tonal",
-                      density: "comfortable",
-                      class: "mt-4"
-                    }, {
-                      default: _withCtx(() => [
-                        _createTextVNode(" 批次中还有 " + _toDisplayString(pendingPlanItems.value.length - (pendingPlan.value.ready_count || 0)) + " 个不可执行条目，本次不会执行这些条目。 ", 1)
-                      ]),
-                      _: 1
-                    }))
-                  : _createCommentVNode("", true),
                 _createVNode(_component_VAlert, {
                   type: "warning",
                   variant: "tonal",
@@ -3565,6 +3549,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-0e7e58ca"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-73354abe"]]);
 
 export { AppPage as default };

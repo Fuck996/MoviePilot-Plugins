@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.9"
+    plugin_version = "1.0.10"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -708,15 +708,14 @@ class MediaLibraryKeeper(_PluginBase):
                 continue
             plan = queue_item.get("plan") or {}
             for index, media in enumerate(plan.get("items") or []):
+                if media.get("status") != "ready":
+                    continue
                 rows.append(self._queue_media_status(queue_item, media, index))
         return rows
 
     def _queue_media_status(self, queue_item: Dict[str, Any], media: Dict[str, Any], index: int) -> Dict[str, Any]:
         status = queue_item.get("status")
         message = queue_item.get("message")
-        if media.get("status") != "ready":
-            status = "skipped"
-            message = media.get("message") or "不在本次执行范围"
         delete_targets = media.get("delete_targets") or []
         return {
             "id": f"{queue_item.get('id')}-{media.get('media_id') or index}",
@@ -1944,9 +1943,9 @@ class MediaLibraryKeeper(_PluginBase):
         ai_resource_message = ""
 
         has_source_target = any(target.get("kind") == "src" for target in delete_targets)
+        source_record_missing = not records and delete_source and delete_targets and not has_source_target
         status = "ready" if delete_targets else "no_match"
-        if not records and delete_source and delete_targets and not has_source_target:
-            status = "record_missing"
+        if source_record_missing:
             if self._ai_resource_recognition_enabled():
                 ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets)
                 ai_resource_candidates = ai_result["candidates"]
@@ -1957,8 +1956,8 @@ class MediaLibraryKeeper(_PluginBase):
                 ai_resource_message = self._ai_agent_status()[1]
         if records and delete_targets:
             message = "已匹配整理记录。"
-        elif status == "record_missing":
-            message = "整理记录丢失，目录映射只定位到媒体库文件，未找到源文件。"
+        elif source_record_missing:
+            message = "整理记录或源文件记录缺失，已定位媒体库文件，将按确认范围删除媒体库文件。"
         elif delete_targets:
             dest_count = len([target for target in delete_targets if target.get("kind") == "dest"])
             src_count = len([target for target in delete_targets if target.get("kind") == "src"])
