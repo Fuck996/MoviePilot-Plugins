@@ -1203,14 +1203,14 @@ onUnmounted(() => {
             </div>
 
             <div class="mlk-settings-group">
-              <div class="text-subtitle-1 font-weight-medium">扫描与容量告警</div>
+              <div class="text-subtitle-1 font-weight-medium">扫描和清理计划</div>
               <div class="mlk-form-grid">
                 <VSelect v-model="configDraft.scan_cron" label="扫描周期" :items="scanCronOptions" />
                 <VTextField v-model.number="configDraft.disk_warning_free_gb" type="number" min="0" label="剩余容量低于 GB" />
                 <VTextField v-model.number="configDraft.disk_warning_free_percent" type="number" min="0" label="剩余比例低于 %" />
               </div>
               <VAlert type="info" variant="tonal" density="comfortable">
-                磁盘容量会跟随 Emby 扫描到的电影文件和剧集分集路径自动识别，支持多个挂载磁盘。
+                定时任务会先扫描 Emby 媒体库，刷新容量状态和磁盘告警，再按下方清理计划规则生成待确认批次。
               </VAlert>
             </div>
 
@@ -1337,8 +1337,8 @@ onUnmounted(() => {
             </div>
 
             <div class="mlk-settings-actions">
-              <VBtn prepend-icon="mdi-playlist-search" color="secondary" variant="tonal" :loading="ruleScanning" @click="scanCleanupRules">
-                立即按规则扫描
+              <VBtn class="mlk-rule-scan-btn" prepend-icon="mdi-playlist-plus" color="primary" variant="flat" :loading="ruleScanning" @click="scanCleanupRules">
+                扫描并生成批次
               </VBtn>
               <VBtn prepend-icon="mdi-content-save" color="primary" variant="flat" :loading="saving" @click="saveConfig">
                 保存设置
@@ -2054,6 +2054,14 @@ onUnmounted(() => {
 
 .mlk-settings-actions {
   justify-content: flex-end;
+}
+
+.mlk-rule-scan-btn {
+  min-width: 150px;
+}
+
+.mlk-rule-scan-btn :deep(.v-btn__content) {
+  justify-content: center;
 }
 
 .mlk-detail-layout {

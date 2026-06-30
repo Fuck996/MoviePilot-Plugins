@@ -53,6 +53,12 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "filterCleanedMediaFromStatus" in source
     assert "cleanedMediaIdsFromHistory" in source
     assert "pending_plan:" in source
+    assert "扫描和清理计划" in source
+    assert "定时任务会先扫描 Emby 媒体库" in source
+    assert "扫描并生成批次" in source
+    assert "mlk-rule-scan-btn" in source
+    assert "扫描与容量告警" not in source
+    assert "立即按规则扫描" not in source
     assert "downloader_path_mappings" in source
     assert "下载器目录映射" in source
     assert "保种排查候选" in source
