@@ -251,6 +251,7 @@ const planHeaders = [
   { title: '媒体', key: 'title' },
   { title: '状态', key: 'status', width: 110 },
   { title: '预计释放', key: 'size', width: 120 },
+  { title: '所属卷', key: 'volume_name', width: 180 },
   { title: '删除目标', key: 'target_count', width: 110 },
   { title: '说明', key: 'message' },
   { title: '操作', key: 'actions', width: 132, sortable: false, align: 'center' },
@@ -293,6 +294,23 @@ function watchStateText(item) {
 
 function mediaVolumeText(item) {
   return item.volume_name || item.volume_summary || '未识别'
+}
+
+function mediaVolumeCapacityText(item) {
+  const volumes = Array.isArray(item.volumes) ? item.volumes : []
+  if (volumes.length) {
+    return volumes
+      .map((volume) => {
+        const name = volume.display_name || volume.mount_point || '未识别'
+        return `${name}（${formatBytes(volume.free)}）`
+      })
+      .join(' / ')
+  }
+  if (item.volume_name) {
+    const suffix = item.volume_free_percent !== null && item.volume_free_percent !== undefined ? `${item.volume_free_percent}%` : '未知'
+    return `${item.volume_name}（${suffix}）`
+  }
+  return '未识别'
 }
 
 function mediaAddedLabelText(item) {
@@ -827,6 +845,7 @@ onUnmounted(() => {
                     :icon="isSelected(item) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
                     :color="isSelected(item) ? 'success' : undefined"
                     variant="text"
+                    :aria-label="isSelected(item) ? '从清理选择中移除' : '加入清理选择'"
                     @click.stop="toggleSelected(item)"
                   />
                 </div>
@@ -877,6 +896,14 @@ onUnmounted(() => {
                   <div v-else class="mlk-poster-fallback">
                     <VIcon :icon="item.type === 'series' ? 'mdi-television-classic' : 'mdi-movie-open-outline'" size="44" />
                   </div>
+                  <VBtn
+                    class="mlk-select-btn"
+                    :icon="isSelected(item) ? 'mdi-check-circle' : 'mdi-plus-circle-outline'"
+                    :color="isSelected(item) ? 'success' : undefined"
+                    variant="text"
+                    :aria-label="isSelected(item) ? '从清理选择中移除' : '加入清理选择'"
+                    @click.stop="toggleSelected(item)"
+                  />
                 </div>
                 <div class="mlk-media-body">
                   <div class="mlk-media-head">
@@ -950,7 +977,7 @@ onUnmounted(() => {
                     </VChip>
                   </template>
                   <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
-                  <template #item.volume_name="{ item }">{{ mediaVolumeText(item) }}</template>
+                  <template #item.volume_name="{ item }">{{ mediaVolumeCapacityText(item) }}</template>
                   <template #item.added_at="{ item }">{{ mediaAddedLabelText(item) }}</template>
                   <template #item.actions="{ item }">
                     <VBtn icon="mdi-minus-circle-outline" variant="text" color="error" @click="toggleSelected(item)" />
@@ -962,7 +989,20 @@ onUnmounted(() => {
             <VSheet v-if="pendingPlan" border rounded class="mlk-plan-card">
               <div class="mlk-plan-summary">
                 <div class="mlk-plan-main">
-                  <div class="text-subtitle-1 font-weight-medium">批次 {{ pendingPlan.batch_id || pendingPlan.id }}</div>
+                  <div class="mlk-plan-bar-title">
+                    <span class="text-subtitle-1 font-weight-medium">批次 {{ pendingPlan.batch_id || pendingPlan.id }}</span>
+                    <VTooltip :text="planExpanded ? '收起批次明细' : '展开批次明细'" location="top">
+                      <template #activator="{ props: tooltipProps }">
+                        <VBtn
+                          v-bind="tooltipProps"
+                          :icon="planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+                          variant="text"
+                          size="small"
+                          @click="planExpanded = !planExpanded"
+                        />
+                      </template>
+                    </VTooltip>
+                  </div>
                   <div class="text-caption text-medium-emphasis">{{ pendingPlan.source_label || '手动选择' }} · {{ pendingPlan.created_at }}</div>
                   <div class="text-body-2 text-medium-emphasis">{{ pendingPlan.message }}</div>
                   <div class="mlk-chip-row">
@@ -974,16 +1014,6 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="mlk-plan-actions">
-                  <VTooltip :text="planExpanded ? '收起批次明细' : '展开批次明细'" location="top">
-                    <template #activator="{ props: tooltipProps }">
-                      <VBtn
-                        v-bind="tooltipProps"
-                        :icon="planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-                        variant="text"
-                        @click="planExpanded = !planExpanded"
-                      />
-                    </template>
-                  </VTooltip>
                   <VTooltip text="删除当前批次记录，不删除文件" location="top">
                     <template #activator="{ props: tooltipProps }">
                       <span v-bind="tooltipProps">
@@ -1025,6 +1055,7 @@ onUnmounted(() => {
                       </VChip>
                     </template>
                     <template #item.size="{ item }">{{ formatBytes(item.size) }}</template>
+                    <template #item.volume_name="{ item }">{{ mediaVolumeCapacityText(item) }}</template>
                     <template #item.target_count="{ item }">{{ item.delete_targets?.length || 0 }}</template>
                     <template #item.actions="{ item }">
                       <div class="mlk-table-actions">
@@ -1239,6 +1270,9 @@ onUnmounted(() => {
                 <VSwitch v-model="configDraft.default_delete_source" color="error" inset label="默认同时删除源文件" />
                 <VSwitch v-model="configDraft.delete_seed_tasks" color="warning" inset label="删除资源时同步删除保种任务" />
               </div>
+              <VAlert type="info" variant="tonal" density="comfortable">
+                AI资源任务识别用于整理记录或 download hash 缺失时，把目录映射生成的候选源文件和下载器路径交给系统 AI 辅助判断；AI结果只作为待确认候选展示，不会绕过人工确认自动删除。
+              </VAlert>
             </div>
 
             <VDivider />

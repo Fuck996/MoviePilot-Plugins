@@ -50,7 +50,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.43"
+    plugin_version = "0.3.44"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -1604,7 +1604,7 @@ class MediaLibraryKeeper(_PluginBase):
         ready_count = len([item for item in plan_items if item.get("status") == "ready"])
         estimated_size = self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])
         plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
-        return {
+        plan = {
             "id": batch_id,
             "batch_id": batch_id,
             "created_at": created_at or now_text,
@@ -1619,6 +1619,56 @@ class MediaLibraryKeeper(_PluginBase):
             "status": plan_status,
             "message": self._plan_message(plan_status, plan_items),
         }
+        self._log_cleanup_plan(plan)
+        return plan
+
+    def _log_cleanup_plan(self, plan: Dict[str, Any]) -> None:
+        recognition = self._cleanup_plan_recognition_summary(plan)
+        logger.info(
+            "媒体库管家清理计划生成："
+            f"batch={plan.get('batch_id') or plan.get('id')}，source={plan.get('source')}，"
+            f"items={len(plan.get('items') or [])}，ready={plan.get('ready_count', 0)}，"
+            f"estimated={self._human_size(plan.get('estimated_reclaim_size'))}，"
+            f"ai_enabled={recognition['ai_enabled']}，ai_involved={recognition['ai_involved']}，"
+            f"ai_result={recognition['ai_result']}"
+        )
+        for item in plan.get("items", []) or []:
+            target_sources = self._target_source_counts(item.get("delete_targets") or [])
+            logger.info(
+                "媒体库管家清理计划识别："
+                f"batch={plan.get('batch_id') or plan.get('id')}，title={item.get('title')}，"
+                f"status={item.get('status')}，message={item.get('message')}，"
+                f"targets={len(item.get('delete_targets') or [])}，target_sources={target_sources}，"
+                f"download_tasks={len(item.get('download_tasks') or [])}，"
+                f"seed_candidates={len(item.get('seed_candidates') or [])}"
+            )
+
+    def _cleanup_plan_recognition_summary(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        items = plan.get("items") or []
+        targets = [target for item in items for target in item.get("delete_targets", []) or []]
+        seed_candidates = [candidate for item in items for candidate in item.get("seed_candidates", []) or []]
+        ai_targets = [target for target in targets if target.get("match_source") == "ai_resource_recognition"]
+        ai_candidates = [candidate for candidate in seed_candidates if candidate.get("match_source") == "ai_resource_recognition"]
+        ai_involved = bool(ai_targets or ai_candidates)
+        if ai_involved:
+            ai_result = f"AI识别目标 {len(ai_targets)} 个，候选 {len(ai_candidates)} 个"
+        elif self._config.get("ai_suggestions"):
+            ai_result = f"AI未参与；当前批次生成保种排查候选 {len(seed_candidates)} 个，需用户确认"
+        else:
+            ai_result = "AI未启用"
+        return {
+            "ai_enabled": bool(self._config.get("ai_suggestions")),
+            "ai_involved": ai_involved,
+            "ai_result": ai_result,
+        }
+
+    @staticmethod
+    def _target_source_counts(targets: List[Dict[str, Any]]) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for target in targets:
+            source = target.get("match_source") or target.get("kind") or "unknown"
+            counts[source] = counts.get(source, 0) + 1
+        return counts
 
     @staticmethod
     def _plan_ready_count(plan: Dict[str, Any]) -> int:
@@ -1752,6 +1802,10 @@ class MediaLibraryKeeper(_PluginBase):
             "progress": media.get("progress"),
             "last_episode_added_at": media.get("last_episode_added_at"),
             "last_watched_at": media.get("last_watched_at"),
+            "volume_name": media.get("volume_name"),
+            "volume_free_percent": media.get("volume_free_percent"),
+            "volume_summary": media.get("volume_summary"),
+            "volumes": media.get("volumes") or [],
             "matched_transfer_records": [self._transfer_record_summary(record) for record in records],
             "download_tasks": download_tasks,
             "seed_candidates": seed_candidates,

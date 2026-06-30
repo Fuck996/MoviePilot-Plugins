@@ -58,8 +58,18 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "保种排查候选" in source
     assert "seed_candidates" in source
     assert "AI资源任务识别" in source
+    assert "AI资源任务识别用于整理记录或 download hash 缺失时" in source
     assert 'label="允许 AI 参与清理建议排序" disabled' not in source
     assert "mlk-table-actions" in source
+    assert "mediaVolumeCapacityText" in source
+    assert "return `${name}（${formatBytes(volume.free)}）`" in source
+    assert "recommendationRows.length" in source
+    recommendation_source = source.split('<VWindowItem value="recommendations">', 1)[1].split('<VEmptyState v-else', 1)[0]
+    assert "mlk-select-btn" in recommendation_source
+    assert "@click.stop=\"toggleSelected(item)\"" in recommendation_source
+    plan_summary_source = source.split('<div class="mlk-plan-summary">', 1)[1].split('<div class="mlk-plan-actions">', 1)[0]
+    assert "mlk-plan-bar-title" in plan_summary_source
+    assert "planExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'" in plan_summary_source
     assert "记录丢失" in source
     assert "可执行媒体条目" in source
     assert "已匹配媒体条目" not in source
@@ -136,11 +146,20 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert '"filename": Path(path).name' in source
     assert '"match_source_label": "目录映射识别"' in source
     assert '"ai_suggestions": True' in source
+    assert '"volume_name": media.get("volume_name")' in source
+    assert "_log_cleanup_plan" in source
+    assert "_cleanup_plan_recognition_summary" in source
+    assert "ai_involved=" in source
+    assert "ai_result=" in source
+    assert "媒体库管家清理计划识别" in source
     assert "get_agent_tools" in source
     assert "MediaLibraryKeeperSeedReviewTool" in source
     assert "original_downloader" in frontend
     assert "original_downloader" in provider
     assert "download_tasks: (item.download_tasks || []).map(compactSeedTask)" in provider
+    assert "'volume_name'" in provider
+    assert "'volume_free_percent'" in provider
+    assert "'volumes'" in provider
     assert "compactSeedCandidate" in provider
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend
