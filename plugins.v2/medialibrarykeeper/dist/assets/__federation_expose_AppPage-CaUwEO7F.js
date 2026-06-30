@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-B-W9CnOJ.js';
+import { _ as _export_sfc, t as toEditableConfig, c as createDefaultConfig, p as planItemFromMedia, f as formatNumber, b as formatBytes, a as toPayloadConfig, u as unwrapResponse, r as readStatusCache, d as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper-BSMenmMz.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,vShow:_vShow,withDirectives:_withDirectives,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps} = await importShared('vue');
 
@@ -158,62 +158,66 @@ const _hoisted_106 = {
   key: 0,
   class: "text-caption text-medium-emphasis"
 };
-const _hoisted_107 = { class: "text-caption text-medium-emphasis" };
-const _hoisted_108 = {
+const _hoisted_107 = {
   key: 1,
   class: "text-caption text-medium-emphasis"
 };
+const _hoisted_108 = { class: "text-caption text-medium-emphasis" };
 const _hoisted_109 = {
+  key: 2,
+  class: "text-caption text-medium-emphasis"
+};
+const _hoisted_110 = {
   key: 2,
   class: "mlk-target-list"
 };
-const _hoisted_110 = { class: "mlk-target-head" };
-const _hoisted_111 = {
+const _hoisted_111 = { class: "mlk-target-head" };
+const _hoisted_112 = {
   key: 0,
   class: "text-caption text-medium-emphasis"
 };
-const _hoisted_112 = {
+const _hoisted_113 = {
   key: 1,
   class: "text-body-2"
 };
-const _hoisted_113 = { class: "text-body-2" };
-const _hoisted_114 = {
+const _hoisted_114 = { class: "text-body-2" };
+const _hoisted_115 = {
   key: 2,
   class: "text-caption text-medium-emphasis"
 };
-const _hoisted_115 = {
+const _hoisted_116 = {
   key: 3,
   class: "mt-5"
 };
-const _hoisted_116 = { class: "mlk-target-head" };
-const _hoisted_117 = { class: "text-body-2" };
-const _hoisted_118 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_117 = { class: "mlk-target-head" };
+const _hoisted_118 = { class: "text-body-2" };
 const _hoisted_119 = { class: "text-caption text-medium-emphasis" };
-const _hoisted_120 = {
+const _hoisted_120 = { class: "text-caption text-medium-emphasis" };
+const _hoisted_121 = {
   key: 4,
   class: "mt-5"
 };
-const _hoisted_121 = { class: "mlk-target-head" };
-const _hoisted_122 = { class: "text-body-2" };
+const _hoisted_122 = { class: "mlk-target-head" };
 const _hoisted_123 = { class: "text-body-2" };
-const _hoisted_124 = { class: "text-caption text-medium-emphasis mt-1" };
-const _hoisted_125 = { class: "mlk-detail-summary mb-4" };
-const _hoisted_126 = { class: "text-body-2 text-medium-emphasis mb-4" };
-const _hoisted_127 = {
+const _hoisted_124 = { class: "text-body-2" };
+const _hoisted_125 = { class: "text-caption text-medium-emphasis mt-1" };
+const _hoisted_126 = { class: "mlk-detail-summary mb-4" };
+const _hoisted_127 = { class: "text-body-2 text-medium-emphasis mb-4" };
+const _hoisted_128 = {
   key: 0,
   class: "mb-4"
 };
-const _hoisted_128 = { class: "mlk-chip-row" };
-const _hoisted_129 = {
+const _hoisted_129 = { class: "mlk-chip-row" };
+const _hoisted_130 = {
   key: 0,
   class: "text-caption text-medium-emphasis"
 };
-const _hoisted_130 = {
+const _hoisted_131 = {
   key: 1,
   class: "mt-5"
 };
-const _hoisted_131 = { class: "text-body-2" };
 const _hoisted_132 = { class: "text-body-2" };
+const _hoisted_133 = { class: "text-body-2" };
 
 const {computed,getCurrentInstance,onMounted,onUnmounted,ref,watch} = await importShared('vue');
 
@@ -366,10 +370,22 @@ function downloadTaskName(task) {
   return task.matched_downloader || task.downloader || (candidates.length ? candidates.join(' / ') : '配置下载器')
 }
 function downloadTaskTitle(task) {
-  return task.task_name || '未在配置下载器中找到对应任务'
+  if (task.task_name) return task.task_name
+  if (downloadTaskMatched(task)) return '已定位下载任务，未获取到任务名'
+  return '未读取到配置下载器实时任务信息'
 }
 function downloadTaskMatched(task) {
   return task.downloader_match_source === 'configured_downloader' || Boolean(task.matched_downloader || task.task_name)
+}
+function downloadTaskStatusText(task) {
+  if (!downloadTaskMatched(task)) return '历史Hash'
+  return task.task_name ? '已找到' : '已定位'
+}
+function downloadTaskHint(task) {
+  if (downloadTaskMatched(task)) {
+    return task.task_name ? '' : '下载器接口已按 Hash 定位任务，但未返回任务名。'
+  }
+  return '当前批次只保存了历史 Hash，执行清理时会按 Hash 到配置下载器中尝试删除。'
 }
 function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
@@ -2562,7 +2578,7 @@ return (_ctx, _cache) => {
                                       size: "small"
                                     }, {
                                       default: _withCtx(() => [
-                                        _createTextVNode(_toDisplayString(downloadTaskMatched(task) ? '已找到' : '历史Hash'), 1)
+                                        _createTextVNode(_toDisplayString(downloadTaskStatusText(task)), 1)
                                       ]),
                                       _: 2
                                     }, 1032, ["color"]),
@@ -2601,12 +2617,15 @@ return (_ctx, _cache) => {
                                       : _createCommentVNode("", true)
                                   ]),
                                   _createElementVNode("div", _hoisted_105, _toDisplayString(downloadTaskTitle(task)), 1),
-                                  (!downloadTaskMatched(task) && task.title)
-                                    ? (_openBlock(), _createElementBlock("div", _hoisted_106, "历史记录：" + _toDisplayString(task.title), 1))
+                                  (downloadTaskHint(task))
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_106, _toDisplayString(downloadTaskHint(task)), 1))
                                     : _createCommentVNode("", true),
-                                  _createElementVNode("div", _hoisted_107, "Hash：" + _toDisplayString(task.download_hash), 1),
+                                  (!downloadTaskMatched(task) && task.title)
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_107, "历史记录：" + _toDisplayString(task.title), 1))
+                                    : _createCommentVNode("", true),
+                                  _createElementVNode("div", _hoisted_108, "Hash：" + _toDisplayString(task.download_hash), 1),
                                   (task.save_path)
-                                    ? (_openBlock(), _createElementBlock("div", _hoisted_108, "保存目录：" + _toDisplayString(task.save_path), 1))
+                                    ? (_openBlock(), _createElementBlock("div", _hoisted_109, "保存目录：" + _toDisplayString(task.save_path), 1))
                                     : _createCommentVNode("", true)
                                 ]))
                               }), 128))
@@ -2626,7 +2645,7 @@ return (_ctx, _cache) => {
                           }))
                     ]),
                     (selectedPlanItem.value.delete_targets?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_109, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_110, [
                           (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedPlanItem.value.delete_targets, (target) => {
                             return (_openBlock(), _createBlock(_component_VSheet, {
                               key: `${target.kind}-${target.path}`,
@@ -2635,7 +2654,7 @@ return (_ctx, _cache) => {
                               class: "mlk-target-row"
                             }, {
                               default: _withCtx(() => [
-                                _createElementVNode("div", _hoisted_110, [
+                                _createElementVNode("div", _hoisted_111, [
                                   _createVNode(_component_VChip, {
                                     color: target.kind === 'src' ? 'error' : 'primary',
                                     variant: "tonal",
@@ -2674,15 +2693,15 @@ return (_ctx, _cache) => {
                                     : _createCommentVNode("", true)
                                 ]),
                                 (target.kind === 'src' && target.filename)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_111, "源文件名"))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_112, "源文件名"))
                                   : _createCommentVNode("", true),
                                 (target.kind === 'src' && target.filename)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_112, _toDisplayString(target.filename), 1))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_113, _toDisplayString(target.filename), 1))
                                   : _createCommentVNode("", true),
                                 _cache[84] || (_cache[84] = _createElementVNode("div", { class: "text-caption text-medium-emphasis mt-1" }, "文件路径", -1)),
-                                _createElementVNode("div", _hoisted_113, _toDisplayString(target.path || target.path_preview), 1),
+                                _createElementVNode("div", _hoisted_114, _toDisplayString(target.path || target.path_preview), 1),
                                 (target.directory_mapping)
-                                  ? (_openBlock(), _createElementBlock("div", _hoisted_114, " 目录配置：" + _toDisplayString(target.directory_mapping.name || '未命名目录配置') + "；整理方式：" + _toDisplayString(target.directory_mapping.transfer_type || '未知'), 1))
+                                  ? (_openBlock(), _createElementBlock("div", _hoisted_115, " 目录配置：" + _toDisplayString(target.directory_mapping.name || '未命名目录配置') + "；整理方式：" + _toDisplayString(target.directory_mapping.transfer_type || '未知'), 1))
                                   : _createCommentVNode("", true)
                               ]),
                               _: 2
@@ -2691,7 +2710,7 @@ return (_ctx, _cache) => {
                         ]))
                       : _createCommentVNode("", true),
                     (selectedPlanItem.value.seed_candidates?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_115, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_116, [
                           _cache[87] || (_cache[87] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "保种排查候选", -1)),
                           _createVNode(_component_VAlert, {
                             type: "warning",
@@ -2712,7 +2731,7 @@ return (_ctx, _cache) => {
                               class: "mlk-target-row"
                             }, {
                               default: _withCtx(() => [
-                                _createElementVNode("div", _hoisted_116, [
+                                _createElementVNode("div", _hoisted_117, [
                                   _createVNode(_component_VChip, {
                                     color: "warning",
                                     variant: "tonal",
@@ -2733,9 +2752,9 @@ return (_ctx, _cache) => {
                                     _: 2
                                   }, 1024)
                                 ]),
-                                _createElementVNode("div", _hoisted_117, _toDisplayString(candidate.downloader_path), 1),
-                                _createElementVNode("div", _hoisted_118, "MP 资源路径：" + _toDisplayString(candidate.source_path), 1),
-                                _createElementVNode("div", _hoisted_119, _toDisplayString(candidate.reason), 1)
+                                _createElementVNode("div", _hoisted_118, _toDisplayString(candidate.downloader_path), 1),
+                                _createElementVNode("div", _hoisted_119, "MP 资源路径：" + _toDisplayString(candidate.source_path), 1),
+                                _createElementVNode("div", _hoisted_120, _toDisplayString(candidate.reason), 1)
                               ]),
                               _: 2
                             }, 1024))
@@ -2743,7 +2762,7 @@ return (_ctx, _cache) => {
                         ]))
                       : _createCommentVNode("", true),
                     (selectedPlanItem.value.ai_resource_candidates?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_120, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_121, [
                           _cache[92] || (_cache[92] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "AI识别候选源文件", -1)),
                           _createVNode(_component_VAlert, {
                             type: "info",
@@ -2764,7 +2783,7 @@ return (_ctx, _cache) => {
                               class: "mlk-target-row"
                             }, {
                               default: _withCtx(() => [
-                                _createElementVNode("div", _hoisted_121, [
+                                _createElementVNode("div", _hoisted_122, [
                                   _createVNode(_component_VChip, {
                                     color: "warning",
                                     variant: "tonal",
@@ -2786,10 +2805,10 @@ return (_ctx, _cache) => {
                                   }, 1024)
                                 ]),
                                 _cache[90] || (_cache[90] = _createElementVNode("div", { class: "text-caption text-medium-emphasis" }, "源文件名", -1)),
-                                _createElementVNode("div", _hoisted_122, _toDisplayString(candidate.filename || '-'), 1),
+                                _createElementVNode("div", _hoisted_123, _toDisplayString(candidate.filename || '-'), 1),
                                 _cache[91] || (_cache[91] = _createElementVNode("div", { class: "text-caption text-medium-emphasis mt-1" }, "路径", -1)),
-                                _createElementVNode("div", _hoisted_123, _toDisplayString(candidate.source_path), 1),
-                                _createElementVNode("div", _hoisted_124, _toDisplayString(candidate.reason), 1)
+                                _createElementVNode("div", _hoisted_124, _toDisplayString(candidate.source_path), 1),
+                                _createElementVNode("div", _hoisted_125, _toDisplayString(candidate.reason), 1)
                               ]),
                               _: 2
                             }, 1024))
@@ -2845,7 +2864,7 @@ return (_ctx, _cache) => {
                 }),
                 _createVNode(_component_VCardText, null, {
                   default: _withCtx(() => [
-                    _createElementVNode("div", _hoisted_125, [
+                    _createElementVNode("div", _hoisted_126, [
                       _createVNode(_component_VChip, {
                         color: selectedHistoryItem.value.status === 'success' ? 'success' : 'error',
                         variant: "tonal",
@@ -2906,11 +2925,11 @@ return (_ctx, _cache) => {
                           }))
                         : _createCommentVNode("", true)
                     ]),
-                    _createElementVNode("div", _hoisted_126, _toDisplayString(selectedHistoryItem.value.message), 1),
+                    _createElementVNode("div", _hoisted_127, _toDisplayString(selectedHistoryItem.value.message), 1),
                     (selectedHistoryItem.value.items?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_127, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_128, [
                           _cache[95] || (_cache[95] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "本次媒体", -1)),
-                          _createElementVNode("div", _hoisted_128, [
+                          _createElementVNode("div", _hoisted_129, [
                             (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(selectedHistoryItem.value.items, (item) => {
                               return (_openBlock(), _createBlock(_component_VChip, {
                                 key: `${item.title}-${item.type}`,
@@ -2977,7 +2996,7 @@ return (_ctx, _cache) => {
                       "item.downloader": _withCtx(({ item }) => [
                         _createElementVNode("div", null, _toDisplayString(item.downloader || '-'), 1),
                         (item.original_downloader && item.original_downloader !== item.downloader)
-                          ? (_openBlock(), _createElementBlock("div", _hoisted_129, " 原 " + _toDisplayString(item.original_downloader), 1))
+                          ? (_openBlock(), _createElementBlock("div", _hoisted_130, " 原 " + _toDisplayString(item.original_downloader), 1))
                           : _createCommentVNode("", true)
                       ]),
                       "item.title": _withCtx(({ item }) => [
@@ -3007,7 +3026,7 @@ return (_ctx, _cache) => {
                       _: 1
                     }, 8, ["items"]),
                     (selectedHistoryItem.value.failed_targets?.length)
-                      ? (_openBlock(), _createElementBlock("div", _hoisted_130, [
+                      ? (_openBlock(), _createElementBlock("div", _hoisted_131, [
                           _cache[96] || (_cache[96] = _createElementVNode("div", { class: "text-subtitle-2 mb-2" }, "失败项", -1)),
                           _createVNode(_component_VDataTable, {
                             headers: [
@@ -3061,7 +3080,7 @@ return (_ctx, _cache) => {
             }),
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
-                _createElementVNode("div", _hoisted_131, " 本次计划将删除 " + _toDisplayString(pendingPlan.value?.ready_count || 0) + " 个可执行媒体条目关联文件，预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value?.estimated_reclaim_size)) + "。执行成功后会删除对应整理记录。 ", 1),
+                _createElementVNode("div", _hoisted_132, " 本次计划将删除 " + _toDisplayString(pendingPlan.value?.ready_count || 0) + " 个可执行媒体条目关联文件，预计释放 " + _toDisplayString(_unref(formatBytes)(pendingPlan.value?.estimated_reclaim_size)) + "。执行成功后会删除对应整理记录。 ", 1),
                 (pendingPlan.value && (pendingPlan.value.ready_count || 0) < pendingPlanItems.value.length)
                   ? (_openBlock(), _createBlock(_component_VAlert, {
                       key: 0,
@@ -3147,7 +3166,7 @@ return (_ctx, _cache) => {
             }),
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
-                _createElementVNode("div", _hoisted_132, " 将删除批次 " + _toDisplayString(pendingPlan.value?.batch_id || pendingPlan.value?.id) + " 的待处理记录，不会删除媒体文件、源文件或整理记录。 ", 1),
+                _createElementVNode("div", _hoisted_133, " 将删除批次 " + _toDisplayString(pendingPlan.value?.batch_id || pendingPlan.value?.id) + " 的待处理记录，不会删除媒体文件、源文件或整理记录。 ", 1),
                 _createVNode(_component_VCheckbox, {
                   modelValue: deletePlanConfirmed.value,
                   "onUpdate:modelValue": _cache[36] || (_cache[36] = $event => ((deletePlanConfirmed).value = $event)),
@@ -3209,6 +3228,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-b3f3f067"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-77bd2696"]]);
 
 export { AppPage as default };
