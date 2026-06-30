@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -3362,6 +3362,7 @@ class MediaLibraryKeeper(_PluginBase):
                 volume = self._volume_status_for_path(path, volume_cache)
                 if volume and volume.get("key") not in {value.get("key") for value in volumes}:
                     volumes.append(volume)
+            item["root_directories"] = self._media_root_directories(item)
             item["volumes"] = [{key: value for key, value in volume.items() if key != "key"} for volume in volumes]
             if not volumes:
                 item["volume_name"] = ""
@@ -3376,6 +3377,20 @@ class MediaLibraryKeeper(_PluginBase):
                 for volume in volumes
             )
         return media_items
+
+    def _media_root_directories(self, item: Dict[str, Any]) -> List[Dict[str, str]]:
+        result: List[Dict[str, str]] = []
+        seen = set()
+        for path in self._media_volume_paths(item):
+            root_path = self._media_root_path(path)
+            if not root_path or root_path in seen:
+                continue
+            seen.add(root_path)
+            result.append({
+                "path": root_path,
+                "name": self._mount_name(root_path),
+            })
+        return result
 
     def _media_volume_paths(self, item: Dict[str, Any]) -> List[Any]:
         paths = []

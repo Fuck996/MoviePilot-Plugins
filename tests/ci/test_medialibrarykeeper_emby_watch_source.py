@@ -40,16 +40,17 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.4"' in source
+    assert 'plugin_version = "1.0.5"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.4"
+    assert meta["version"] == "1.0.5"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.4"
-    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3", "v1.0.4"]
+    assert plugin_package["version"] == "1.0.5"
+    assert list(meta["history"].keys()) == ["v1.0.1", "v1.0.2", "v1.0.3", "v1.0.4", "v1.0.5"]
     assert "首次启用" in meta["history"]["v1.0.1"]
     assert "目录映射筛选" in meta["history"]["v1.0.2"]
     assert "中文标签" in meta["history"]["v1.0.3"]
     assert "所在盘" in meta["history"]["v1.0.4"]
+    assert "根目录" in meta["history"]["v1.0.5"]
     assert not any(key.startswith("v0.") for key in meta["history"])
 
 
@@ -128,9 +129,14 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "selectedDirectoryFilter" in source
     assert "directoryFilterOptions" in source
     assert "directoryFilterEntries" in source
-    assert "volumeDirectoryOptions" in source
-    assert "pathMappingDirectoryOptions" in source
-    assert "mediaVolumeKeys" in source
+    assert "root_directories" in source
+    assert "roots.includes(selectedDirectoryFilter.value)" in source
+    directory_filter_source = source.split("function mediaMatchesDirectoryFilter", 1)[1].split("function mediaAddedLabelText", 1)[0]
+    assert "startsWith" not in directory_filter_source
+    assert "item.path_preview" not in directory_filter_source
+    assert "volumeDirectoryOptions" not in source
+    assert "pathMappingDirectoryOptions" not in source
+    assert "mediaVolumeKeys" not in source
     assert "filteredRecommendationRows" in source
     assert "visibleRecommendationRows" in source
     assert "sortMediaRows" in source
@@ -378,6 +384,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "'volume_name'" in provider
     assert "'volume_free_percent'" in provider
     assert "'volumes'" in provider
+    assert "'root_directories'" in provider
     assert "compactSeedCandidate" in provider
     assert "status:v2" in provider
     assert "historyDetailDialog" in frontend
@@ -427,3 +434,5 @@ def test_medialibrarykeeper_maps_emby_paths_to_moviepilot_paths() -> None:
     assert "return sorted(normalized, key=lambda item: len(item[\"emby_path\"]), reverse=True)" in source
     assert 'paths = [self._map_emby_path(path) for path in emby_paths]' in source
     assert 'path = self._map_emby_path(episode.get("Path"))' in source
+    assert "_media_root_directories" in source
+    assert '"root_directories"' in source

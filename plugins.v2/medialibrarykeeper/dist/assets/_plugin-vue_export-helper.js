@@ -126,6 +126,7 @@ function compactMediaItem(item) {
     'volume_free_percent',
     'volume_summary',
     'volumes',
+    'root_directories',
   ])
 }
 
@@ -151,6 +152,7 @@ function compactPlan(plan) {
         'volume_free_percent',
         'volume_summary',
         'volumes',
+        'root_directories',
         'status',
         'message',
         'ai_resource_state',

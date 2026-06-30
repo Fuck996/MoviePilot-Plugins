@@ -467,13 +467,24 @@ const librarySwitchOptions = computed(() => [
   ...libraryOptions.value,
 ]);
 const directoryFilterOptions = computed(() => [
-  { title: '全部目录', value: '', type: 'all', paths: [], volumeKeys: [] },
+  { title: '全部目录', value: '', rootPath: '' },
   ...directoryFilterEntries.value,
 ]);
 const directoryFilterEntries = computed(() => {
-  const volumeOptions = volumeDirectoryOptions([...mediaRows.value, ...recommendationRows.value]);
-  if (volumeOptions.length) return volumeOptions
-  return pathMappingDirectoryOptions(configDraft.value.path_mappings || [])
+  const options = new Map();
+  for (const item of [...mediaRows.value, ...recommendationRows.value]) {
+    for (const root of Array.isArray(item.root_directories) ? item.root_directories : []) {
+      const rootPath = normalizeFilterPath(root.path);
+      if (!rootPath || options.has(rootPath)) continue
+      const name = root.name || rootPath;
+      options.set(rootPath, {
+        title: `${name}（${rootPath}）`,
+        value: rootPath,
+        rootPath,
+      });
+    }
+  }
+  return [...options.values()].sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'))
 });
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
@@ -614,72 +625,12 @@ function normalizeFilterPath(path) {
   return String(path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
-function volumeDirectoryOptions(rows) {
-  const options = new Map();
-  for (const item of rows) {
-    for (const volume of Array.isArray(item.volumes) ? item.volumes : []) {
-      const keys = volumeKeys(volume);
-      if (!keys.length) continue
-      const key = keys[0];
-      if (!options.has(key)) {
-        const name = volume.display_name || volume.mount_point || volume.path || key;
-        const title = volume.free !== undefined ? `${name}（${formatBytes(volume.free)}）` : name;
-        options.set(key, {
-          title,
-          value: `volume:${key}`,
-          type: 'volume',
-          paths: [],
-          volumeKeys: keys,
-        });
-      }
-    }
-  }
-  return [...options.values()].sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'))
-}
-
-function pathMappingDirectoryOptions(mappings) {
-  return mappings.map((mapping, index) => {
-    const embyPath = normalizeFilterPath(mapping.emby_path);
-    const mpPath = normalizeFilterPath(mapping.mp_path);
-    const title = mpPath && embyPath ? `${mpPath}（${embyPath}）` : (mpPath || embyPath || `目录 ${index + 1}`);
-    return {
-      title,
-      value: `mapping:${index}:${embyPath}:${mpPath}`,
-      type: 'mapping',
-      paths: [mpPath, embyPath].filter(Boolean),
-      volumeKeys: [],
-    }
-  }).filter(item => item.paths.length)
-}
-
-function volumeKeys(volume) {
-  return [
-    volume.display_name,
-    volume.mount_point,
-    volume.path,
-  ].map(normalizeFilterPath).filter(Boolean)
-}
-
-function mediaVolumeKeys(item) {
-  return (Array.isArray(item.volumes) ? item.volumes : []).flatMap(volumeKeys)
-}
-
 function mediaMatchesDirectoryFilter(item) {
   if (!selectedDirectoryFilter.value) return true
-  const option = directoryFilterOptions.value.find(entry => entry.value === selectedDirectoryFilter.value);
-  if (option?.type === 'volume') {
-    const itemKeys = new Set(mediaVolumeKeys(item));
-    return (option.volumeKeys || []).some(key => itemKeys.has(key))
-  }
-  const prefixes = option?.paths || [];
-  if (!prefixes.length) return true
-  const paths = [
-    item.path,
-    item.path_preview,
-    item.emby_path,
-    item.emby_path_preview,
-  ].map(normalizeFilterPath).filter(Boolean);
-  return prefixes.some(prefix => paths.some(path => path === prefix || path.startsWith(`${prefix}/`)))
+  const roots = (Array.isArray(item.root_directories) ? item.root_directories : [])
+    .map(root => normalizeFilterPath(root.path))
+    .filter(Boolean);
+  return roots.includes(selectedDirectoryFilter.value)
 }
 
 function sortValue(item, key) {
@@ -3591,6 +3542,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-1489fd19"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-68fc7751"]]);
 
 export { AppPage as default };
