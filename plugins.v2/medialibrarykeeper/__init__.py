@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "管理 Emby 媒体库观看进度、空间风险和清理计划。"
     plugin_icon = "emby.png"
-    plugin_version = "0.3.56"
+    plugin_version = "0.3.57"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -365,7 +365,7 @@ class MediaLibraryKeeper(_PluginBase):
         if missing:
             return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
 
-        delete_source = bool(payload.get("delete_source", self._config.get("default_delete_source")))
+        delete_source = bool(self._config.get("default_delete_source"))
         plan = self._build_cleanup_plan([media_index[item_id] for item_id in selected_ids], delete_source, source="manual")
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         if self._config.get("notify_enabled"):
@@ -396,28 +396,44 @@ class MediaLibraryKeeper(_PluginBase):
         if not item_ids:
             return schemas.Response(success=False, message="请选择要调整的媒体条目")
 
-        snapshot = self._load_snapshot()
-        media_index = {item.get("id"): item for item in snapshot.get("media", [])}
-        current_ids = [item.get("media_id") for item in pending_plan.get("items", []) if item.get("media_id")]
+        plan_items = list(pending_plan.get("items") or [])
+        current_ids = [item.get("media_id") for item in plan_items if item.get("media_id")]
+        changed_items: List[Dict[str, Any]] = []
+        requested_count = len(item_ids)
         if action == "remove":
-            next_ids = [item_id for item_id in current_ids if item_id not in set(item_ids)]
+            remove_ids = set(item_ids)
+            next_items = [item for item in plan_items if item.get("media_id") not in remove_ids]
+            changed_items = [item for item in plan_items if item.get("media_id") in remove_ids]
+            plan = {**pending_plan, "items": next_items}
+            added_count = 0
+            removed_count = len(changed_items)
         else:
-            missing = [item_id for item_id in item_ids if item_id not in media_index]
+            snapshot = self._load_snapshot()
+            media_index = {item.get("id"): item for item in snapshot.get("media", [])}
+            existing_ids = set(current_ids)
+            new_ids = [item_id for item_id in dict.fromkeys(item_ids) if item_id not in existing_ids]
+            missing = [item_id for item_id in new_ids if item_id not in media_index]
             if missing:
                 return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
-            next_ids = list(dict.fromkeys([*current_ids, *item_ids]))
+            changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get("delete_source"))) for item_id in new_ids]
+            plan = {**pending_plan, "items": [*plan_items, *changed_items]}
+            added_count = len(changed_items)
+            removed_count = 0
 
-        media_items = [media_index[item_id] for item_id in next_ids if item_id in media_index]
-        plan = self._build_cleanup_plan(
-            media_items,
-            bool(pending_plan.get("delete_source")),
-            source=pending_plan.get("source") or "manual",
-            criteria=pending_plan.get("criteria"),
-            plan_id=pending_plan.get("id"),
-            created_at=pending_plan.get("created_at"),
-        )
+        self._refresh_cleanup_plan(plan)
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
-        return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
+        logger.info(
+            "媒体库管家清理计划更新："
+            f"batch={plan.get('batch_id') or plan.get('id')}，action={action}，"
+            f"requested={requested_count}，added={added_count}，removed={removed_count}，"
+            f"items={len(plan.get('items') or [])}，ready={plan.get('ready_count', 0)}，"
+            f"estimated={self._human_size(plan.get('estimated_reclaim_size'))}，"
+            f"delete_source={bool(plan.get('delete_source'))}"
+        )
+        for item in changed_items:
+            self._log_cleanup_plan_item(plan, item, "媒体库管家清理计划更新识别")
+        message = "已移出清理批次" if action == "remove" else "已加入清理批次" if added_count else "所选媒体已在当前批次中"
+        return schemas.Response(success=True, message=message, data={"plan": plan, "status": self.get_status().data})
 
     def delete_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
@@ -1646,6 +1662,20 @@ class MediaLibraryKeeper(_PluginBase):
         self._log_cleanup_plan(plan)
         return plan
 
+    def _refresh_cleanup_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        plan_items = list(plan.get("items") or [])
+        ready_items = [item for item in plan_items if item.get("status") == "ready"]
+        ready_count = len(ready_items)
+        plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
+        plan["items"] = plan_items
+        plan["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        plan["source_label"] = self._plan_source_label(plan.get("source") or "manual")
+        plan["estimated_reclaim_size"] = self._sum_unique_target_size(ready_items)
+        plan["ready_count"] = ready_count
+        plan["status"] = plan_status
+        plan["message"] = self._plan_message(plan_status, plan_items)
+        return plan
+
     def _log_cleanup_plan(self, plan: Dict[str, Any]) -> None:
         recognition = self._cleanup_plan_recognition_summary(plan)
         logger.info(
@@ -1658,18 +1688,21 @@ class MediaLibraryKeeper(_PluginBase):
             f"ai_result={recognition['ai_result']}"
         )
         for item in plan.get("items", []) or []:
-            target_sources = self._target_source_counts(item.get("delete_targets") or [])
-            logger.info(
-                "媒体库管家清理计划识别："
-                f"batch={plan.get('batch_id') or plan.get('id')}，title={item.get('title')}，"
-                f"status={item.get('status')}，message={item.get('message')}，"
-                f"targets={len(item.get('delete_targets') or [])}，target_sources={target_sources}，"
-                f"download_tasks={len(item.get('download_tasks') or [])}，"
-                f"seed_candidates={len(item.get('seed_candidates') or [])}，"
-                f"ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}，"
-                f"ai_resource_state={item.get('ai_resource_state') or '-'}，"
-                f"ai_resource_message={item.get('ai_resource_message') or '-'}"
-            )
+            self._log_cleanup_plan_item(plan, item, "媒体库管家清理计划识别")
+
+    def _log_cleanup_plan_item(self, plan: Dict[str, Any], item: Dict[str, Any], prefix: str) -> None:
+        target_sources = self._target_source_counts(item.get("delete_targets") or [])
+        logger.info(
+            f"{prefix}："
+            f"batch={plan.get('batch_id') or plan.get('id')}，title={item.get('title')}，"
+            f"status={item.get('status')}，message={item.get('message')}，"
+            f"targets={len(item.get('delete_targets') or [])}，target_sources={target_sources}，"
+            f"download_tasks={len(item.get('download_tasks') or [])}，"
+            f"seed_candidates={len(item.get('seed_candidates') or [])}，"
+            f"ai_resource_candidates={len(item.get('ai_resource_candidates') or [])}，"
+            f"ai_resource_state={item.get('ai_resource_state') or '-'}，"
+            f"ai_resource_message={item.get('ai_resource_message') or '-'}"
+        )
 
     def _cleanup_plan_recognition_summary(self, plan: Dict[str, Any]) -> Dict[str, Any]:
         items = plan.get("items") or []

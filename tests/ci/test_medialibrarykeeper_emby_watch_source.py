@@ -97,6 +97,11 @@ def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
     assert "VSpacer" not in detail_actions_source
     assert "默认同时删除源文件" in source
     assert "同时删除源文件" in source
+    current_selection_source = source.split('<span class="text-subtitle-1 font-weight-medium">当前选择</span>', 1)[1].split('<VSheet v-if="pendingPlan"', 1)[0]
+    assert "deleteSource" not in source
+    assert 'label="同时删除源文件"' not in current_selection_source
+    assert "String(searchText.value || '').trim().toLowerCase()" in source
+    assert "selectedMedia.value = selectedMedia.value.filter(item => !addedIds.has(item.id))" in source
     assert "background: rgba(var(--v-theme-surface-variant), 0.42);" not in source
     assert "border-right: 1px solid rgba(var(--v-theme-primary), 0.16);" in source
     assert "linear-gradient(180deg, rgba(var(--v-theme-primary), 0.18)" in source
@@ -219,6 +224,14 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "ai_called=" in source
     assert "ai_involved=" in source
     assert "ai_result=" in source
+    assert "delete_source = bool(payload.get(\"delete_source\"" not in source
+    assert "delete_source = bool(self._config.get(\"default_delete_source\"))" in source
+    assert "_refresh_cleanup_plan" in source
+    assert "媒体库管家清理计划更新：" in source
+    assert "媒体库管家清理计划更新识别" in source
+    update_api_source = source.split("def update_cleanup_plan_items_api", 1)[1].split("def delete_cleanup_plan_api", 1)[0]
+    assert "_build_cleanup_plan(" not in update_api_source
+    assert "changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get(\"delete_source\"))) for item_id in new_ids]" in update_api_source
     assert "媒体库管家清理计划识别" in source
     assert "_ai_resource_recognition_for_record_missing" in source
     assert "_source_file_candidates_from_directory_mapping" in source

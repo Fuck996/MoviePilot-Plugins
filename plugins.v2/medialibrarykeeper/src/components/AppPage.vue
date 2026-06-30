@@ -55,7 +55,6 @@ const planTargetDialog = ref(false)
 const historyDetailDialog = ref(false)
 const planExpanded = ref(false)
 const selectedPlanExpanded = ref(false)
-const deleteSource = ref(false)
 const searchText = ref('')
 const watchFilter = ref('全部')
 const typeFilter = ref('全部')
@@ -206,7 +205,7 @@ const cleanupWatchStateOptions = [
 const pageSizeOptions = [50, 100, 500, 1000]
 
 const filteredMediaRows = computed(() => {
-  const keyword = searchText.value.trim().toLowerCase()
+  const keyword = String(searchText.value || '').trim().toLowerCase()
   return mediaRows.value.filter((item) => {
     if (selectedLibraryId.value && item.library_id !== selectedLibraryId.value) return false
     if (keyword) {
@@ -464,7 +463,6 @@ function applyStatus(data, options = {}) {
     selectedMedia.value = selectedMedia.value.filter(item => !normalized.removedIds.has(item.id))
   }
   configDraft.value = toEditableConfig(status.value.config)
-  deleteSource.value = Boolean(configDraft.value.default_delete_source)
   if (options.persist !== false) {
     writeStatusCache(props.pluginId, status.value)
   }
@@ -570,7 +568,6 @@ async function createPlan() {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan`, {
       item_ids: selectedMedia.value.map(item => item.id),
       items: selectedPlanItems.value,
-      delete_source: deleteSource.value,
     })
     if (response?.success === false) {
       showToast(response.message || '生成清理计划失败', 'error')
@@ -604,7 +601,12 @@ async function updatePlanItems(action, itemIds) {
     }
     const data = unwrapResponse(response)
     applyStatus(data?.status)
-    showToast(action === 'remove' ? '已移出清理批次' : '已加入清理批次')
+    if (action === 'add') {
+      const addedIds = new Set(itemIds)
+      selectedMedia.value = selectedMedia.value.filter(item => !addedIds.has(item.id))
+      if (!selectedMedia.value.length) selectedPlanExpanded.value = false
+    }
+    showToast(response?.message || (action === 'remove' ? '已移出清理批次' : '已加入清理批次'))
   } catch (err) {
     showToast(err?.message || '调整清理批次失败', 'error')
   } finally {
@@ -974,7 +976,6 @@ onUnmounted(() => {
                 </div>
               </div>
               <VSpacer />
-              <VSwitch v-model="deleteSource" color="error" hide-details inset label="同时删除源文件" />
               <VBtn color="primary" variant="flat" :loading="creatingPlan" :disabled="!selectedMedia.length || updatingPlan" @click="createPlan">
                 生成新批次
               </VBtn>
