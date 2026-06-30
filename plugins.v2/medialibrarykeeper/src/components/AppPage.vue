@@ -241,18 +241,14 @@ const librarySwitchOptions = computed(() => [
   ...libraryOptions.value,
 ])
 const directoryFilterOptions = computed(() => [
-  { title: '全部目录', value: '', paths: [] },
-  ...((configDraft.value.path_mappings || []).map((mapping, index) => {
-    const embyPath = normalizeFilterPath(mapping.emby_path)
-    const mpPath = normalizeFilterPath(mapping.mp_path)
-    const title = mpPath && embyPath ? `${mpPath}（${embyPath}）` : (mpPath || embyPath || `目录 ${index + 1}`)
-    return {
-      title,
-      value: `${index}:${embyPath}:${mpPath}`,
-      paths: [mpPath, embyPath].filter(Boolean),
-    }
-  }).filter(item => item.paths.length)),
+  { title: '全部目录', value: '', type: 'all', paths: [], volumeKeys: [] },
+  ...directoryFilterEntries.value,
 ])
+const directoryFilterEntries = computed(() => {
+  const volumeOptions = volumeDirectoryOptions([...mediaRows.value, ...recommendationRows.value])
+  if (volumeOptions.length) return volumeOptions
+  return pathMappingDirectoryOptions(configDraft.value.path_mappings || [])
+})
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
   { title: '最后观看日期', value: 'last_watched_at' },
@@ -275,9 +271,21 @@ const cleanupWatchStateOptions = [
 ]
 const pageSizeOptions = [50, 100, 500, 1000]
 
-const filteredMediaRows = computed(() => {
+const filteredMediaRows = computed(() => filterMediaRows(mediaRows.value))
+
+const sortedMediaRows = computed(() => sortMediaRows(filteredMediaRows.value))
+
+const visibleMediaRows = computed(() => sortedMediaRows.value.slice(0, pageSize.value))
+
+const filteredRecommendationRows = computed(() => filterMediaRows(recommendationRows.value))
+
+const sortedRecommendationRows = computed(() => sortMediaRows(filteredRecommendationRows.value))
+
+const visibleRecommendationRows = computed(() => sortedRecommendationRows.value.slice(0, pageSize.value))
+
+function filterMediaRows(rows) {
   const keyword = String(searchText.value || '').trim().toLowerCase()
-  return mediaRows.value.filter((item) => {
+  return rows.filter((item) => {
     if (selectedLibraryId.value && item.library_id !== selectedLibraryId.value) return false
     if (!mediaMatchesDirectoryFilter(item)) return false
     if (keyword) {
@@ -291,12 +299,12 @@ const filteredMediaRows = computed(() => {
     if (watchFilter.value === '未播放' && watchState !== 'unwatched') return false
     return true
   })
-})
+}
 
-const sortedMediaRows = computed(() => {
+function sortMediaRows(rows) {
   const key = mediaSort.value
   const direction = sortDesc.value ? -1 : 1
-  return [...filteredMediaRows.value].sort((left, right) => {
+  return [...rows].sort((left, right) => {
     const leftValue = sortValue(left, key)
     const rightValue = sortValue(right, key)
     if (leftValue === rightValue) {
@@ -304,9 +312,7 @@ const sortedMediaRows = computed(() => {
     }
     return leftValue > rightValue ? direction : -direction
   })
-})
-
-const visibleMediaRows = computed(() => sortedMediaRows.value.slice(0, pageSize.value))
+}
 
 const libraryCards = computed(() => {
   const counts = mediaRows.value.reduce((acc, item) => {
@@ -382,9 +388,63 @@ function normalizeFilterPath(path) {
   return String(path || '').trim().replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
+function volumeDirectoryOptions(rows) {
+  const options = new Map()
+  for (const item of rows) {
+    for (const volume of Array.isArray(item.volumes) ? item.volumes : []) {
+      const keys = volumeKeys(volume)
+      if (!keys.length) continue
+      const key = keys[0]
+      if (!options.has(key)) {
+        const name = volume.display_name || volume.mount_point || volume.path || key
+        const title = volume.free !== undefined ? `${name}（${formatBytes(volume.free)}）` : name
+        options.set(key, {
+          title,
+          value: `volume:${key}`,
+          type: 'volume',
+          paths: [],
+          volumeKeys: keys,
+        })
+      }
+    }
+  }
+  return [...options.values()].sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'))
+}
+
+function pathMappingDirectoryOptions(mappings) {
+  return mappings.map((mapping, index) => {
+    const embyPath = normalizeFilterPath(mapping.emby_path)
+    const mpPath = normalizeFilterPath(mapping.mp_path)
+    const title = mpPath && embyPath ? `${mpPath}（${embyPath}）` : (mpPath || embyPath || `目录 ${index + 1}`)
+    return {
+      title,
+      value: `mapping:${index}:${embyPath}:${mpPath}`,
+      type: 'mapping',
+      paths: [mpPath, embyPath].filter(Boolean),
+      volumeKeys: [],
+    }
+  }).filter(item => item.paths.length)
+}
+
+function volumeKeys(volume) {
+  return [
+    volume.display_name,
+    volume.mount_point,
+    volume.path,
+  ].map(normalizeFilterPath).filter(Boolean)
+}
+
+function mediaVolumeKeys(item) {
+  return (Array.isArray(item.volumes) ? item.volumes : []).flatMap(volumeKeys)
+}
+
 function mediaMatchesDirectoryFilter(item) {
   if (!selectedDirectoryFilter.value) return true
   const option = directoryFilterOptions.value.find(entry => entry.value === selectedDirectoryFilter.value)
+  if (option?.type === 'volume') {
+    const itemKeys = new Set(mediaVolumeKeys(item))
+    return (option.volumeKeys || []).some(key => itemKeys.has(key))
+  }
   const prefixes = option?.paths || []
   if (!prefixes.length) return true
   const paths = [
@@ -876,8 +936,6 @@ onMounted(() => {
   })
 })
 
-const filteredRecommendationRows = computed(() => recommendationRows.value.filter(mediaMatchesDirectoryFilter))
-
 watch(cleanupQueueRows, (rows) => {
   if (rows.length) {
     startQueuePolling()
@@ -1061,14 +1119,23 @@ onUnmounted(() => {
         <VWindowItem value="recommendations">
           <div class="mlk-section">
             <div class="mlk-toolbar">
+              <VSelect v-model="selectedLibraryId" label="媒体库" :items="librarySwitchOptions" density="comfortable" hide-details />
               <VSelect v-model="selectedDirectoryFilter" label="目录" :items="directoryFilterOptions" density="comfortable" hide-details />
+              <VTextField v-model="searchText" label="搜索名称、简介或路径" prepend-inner-icon="mdi-magnify" density="comfortable" hide-details clearable />
+              <VSelect v-model="watchFilter" label="观看状态" :items="mediaWatchFilterOptions" density="comfortable" hide-details />
+              <VSelect v-model="typeFilter" label="媒体类型" :items="['全部', '电影', '剧集']" density="comfortable" hide-details />
+              <VSelect v-model="mediaSort" label="排序规则" :items="sortOptions" density="comfortable" hide-details />
+              <VSelect v-model.number="pageSize" label="显示数量" :items="pageSizeOptions" density="comfortable" hide-details />
+              <VBtn :prepend-icon="sortDesc ? 'mdi-sort-descending' : 'mdi-sort-ascending'" variant="tonal" @click="sortDesc = !sortDesc">
+                {{ sortDesc ? '降序' : '升序' }}
+              </VBtn>
             </div>
             <VAlert v-if="recommendationRows.length" type="info" variant="tonal" density="compact">
-              当前清理建议 {{ recommendationRows.length }} 个，目录筛选后 {{ filteredRecommendationRows.length }} 个。
+              当前清理建议 {{ recommendationRows.length }} 个，筛选后 {{ filteredRecommendationRows.length }} 个，显示 {{ visibleRecommendationRows.length }} 个。
             </VAlert>
-            <div v-if="filteredRecommendationRows.length" class="mlk-media-grid">
+            <div v-if="visibleRecommendationRows.length" class="mlk-media-grid">
               <VSheet
-                v-for="item in filteredRecommendationRows"
+                v-for="item in visibleRecommendationRows"
                 :key="item.id"
                 border
                 rounded
@@ -1112,7 +1179,7 @@ onUnmounted(() => {
               v-else
               icon="mdi-lightbulb-on-outline"
               :title="recommendationRows.length ? '没有匹配的清理建议' : '暂无清理建议'"
-              :text="recommendationRows.length ? '切换目录筛选后再试。' : '扫描后会列出已看完、入库较久未观看和占用较大的候选。'"
+              :text="recommendationRows.length ? '调整筛选、搜索或排序条件后再试。' : '扫描后会列出已看完、入库较久未观看和占用较大的候选。'"
             />
           </div>
         </VWindowItem>
