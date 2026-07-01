@@ -7,6 +7,8 @@ import {
   formatNumber,
   planItemFromMedia,
   readStatusCache,
+  scheduleHostNavigationRefresh,
+  shouldRefreshHostNavigation,
   toEditableConfig,
   toPayloadConfig,
   unwrapResponse,
@@ -719,9 +721,19 @@ function cleanedMediaIdsFromHistory(history) {
 async function saveConfig() {
   saving.value = true
   try {
-    const response = await props.api.post(`${pluginBase.value}/config`, toPayloadConfig(configDraft.value))
+    const previousConfig = toPayloadConfig(status.value.config)
+    const payload = toPayloadConfig(configDraft.value)
+    const needsNavigationRefresh = shouldRefreshHostNavigation(previousConfig, payload)
+    const response = await props.api.post(`${pluginBase.value}/config`, payload)
+    if (response?.success === false) {
+      showToast(response.message || '保存设置失败', 'error')
+      return
+    }
     applyStatus(unwrapResponse(response))
     showToast('设置已保存')
+    if (needsNavigationRefresh) {
+      scheduleHostNavigationRefresh(props.pluginId)
+    }
   } catch (err) {
     showToast(err?.message || '保存设置失败', 'error')
   } finally {

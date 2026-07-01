@@ -73,6 +73,29 @@ function writeStatusCache(pluginId, status) {
   }
 }
 
+function shouldRefreshHostNavigation(before = {}, after = {}) {
+  return Boolean(before.enabled) !== Boolean(after.enabled)
+    || Boolean(before.show_sidebar_nav ?? true) !== Boolean(after.show_sidebar_nav ?? true)
+}
+
+function scheduleHostNavigationRefresh(pluginId = 'MediaLibraryKeeper', delay = 1200) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage?.setItem(
+      `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:sidebar-refresh`,
+      String(Date.now()),
+    );
+    window.dispatchEvent(new CustomEvent('moviepilot:plugin-sidebar-nav-refresh', {
+      detail: { pluginId: pluginId || 'MediaLibraryKeeper' },
+    }));
+  } catch (err) {
+    console.debug('媒体库管家侧栏刷新信号发送失败', err);
+  }
+  window.setTimeout(() => {
+    window.location.reload();
+  }, delay);
+}
+
 function createCachePayload(status) {
   return {
     cached_at: new Date().toISOString(),
@@ -422,4 +445,4 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, createDefaultConfig as c, createDefaultCleanupRule as d, formatNumber as f, planItemFromMedia as p, readStatusCache as r, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };
+export { _export_sfc as _, toPayloadConfig as a, scheduleHostNavigationRefresh as b, formatBytes as c, createDefaultConfig as d, createDefaultCleanupRule as e, formatNumber as f, planItemFromMedia as p, readStatusCache as r, shouldRefreshHostNavigation as s, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };

@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import.js';
-import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig } from './_plugin-vue_export-helper.js';
+import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig, s as shouldRefreshHostNavigation, b as scheduleHostNavigationRefresh } from './_plugin-vue_export-helper.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -42,12 +42,18 @@ const notice = ref({
 const mediaServerOptions = ref([]);
 const downloaderOptions = ref([]);
 const capabilities = ref({});
+const initialConfigSnapshot = ref(toEditableConfig());
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`);
 const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true);
 const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。');
 
 function saveConfig() {
-  emit('save', toPayloadConfig(config.value));
+  const payload = toPayloadConfig(config.value);
+  const needsNavigationRefresh = shouldRefreshHostNavigation(initialConfigSnapshot.value, payload);
+  emit('save', payload);
+  if (needsNavigationRefresh) {
+    scheduleHostNavigationRefresh(props.pluginId);
+  }
 }
 
 function showNotice(message, color = 'warning') {
@@ -86,6 +92,7 @@ async function loadMediaServerOptions() {
 
 onMounted(async () => {
   config.value = toEditableConfig(props.initialConfig);
+  initialConfigSnapshot.value = toEditableConfig(props.initialConfig);
   await loadMediaServerOptions();
 });
 
@@ -207,6 +214,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-2d9e41c9"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-f41cd9b4"]]);
 
 export { Config as default };

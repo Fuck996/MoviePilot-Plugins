@@ -1,5 +1,4 @@
 <script setup>
-import { ref } from 'vue'
 import AppPage from './AppPage.vue'
 
 defineProps({
@@ -11,30 +10,33 @@ defineProps({
     type: String,
     default: 'MediaLibraryKeeper',
   },
+  show_switch: {
+    type: Boolean,
+    default: true,
+  },
 })
 
-const emit = defineEmits(['close'])
-const pageRef = ref(null)
+const emit = defineEmits(['close', 'switch'])
 </script>
 
 <template>
-  <div>
-    <VToolbar density="comfortable" class="mlk-sticky-toolbar">
-      <div class="text-h6 ms-3">媒体库管家</div>
-      <VSpacer />
-      <VBtn icon="mdi-database-sync-outline" variant="text" :loading="pageRef?.scanning" @click="pageRef?.scanLibrary?.()" />
-      <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
-    </VToolbar>
-    <VDivider />
-    <AppPage ref="pageRef" :api="api" :plugin-id="pluginId" hide-title />
-  </div>
+  <AppPage :api="api" :plugin-id="pluginId" hide-title />
+  <VBtn
+    v-if="show_switch"
+    class="mlk-page-settings-fab"
+    icon="mdi-cog"
+    color="primary"
+    variant="flat"
+    size="large"
+    @click="emit('switch')"
+  />
 </template>
 
 <style scoped>
-.mlk-sticky-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgb(var(--v-theme-surface));
+.mlk-page-settings-fab {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 20;
 }
 </style>

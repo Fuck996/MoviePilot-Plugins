@@ -1,7 +1,7 @@
 
-.mlk-sticky-toolbar[data-v-9cae9be7] {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgb(var(--v-theme-surface));
+.mlk-page-settings-fab[data-v-9ea6ea64] {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 20;
 }

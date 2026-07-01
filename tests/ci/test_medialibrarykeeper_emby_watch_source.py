@@ -40,12 +40,13 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.11"' in source
+    assert 'plugin_version = "1.0.12"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.11"
+    assert meta["version"] == "1.0.12"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.11"
-    assert list(meta["history"].keys()) == ["v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.12"
+    assert list(meta["history"].keys()) == ["v1.0.12", "v1.0.11", "v1.0.1"]
+    assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
     assert "首次启用" in meta["history"]["v1.0.1"]
     assert not any(key.startswith("v0.") for key in meta["history"])
@@ -62,13 +63,18 @@ def test_medialibrarykeeper_sidebar_nav_is_controlled_by_visibility_setting() ->
 
 def test_medialibrarykeeper_app_page_exposes_stable_entry() -> None:
     source = Path("plugins.v2/medialibrarykeeper/vite.config.js").read_text(encoding="utf-8")
+    page_source = Path("plugins.v2/medialibrarykeeper/src/components/Page.vue").read_text(encoding="utf-8")
 
+    assert "'./Page': './src/components/Page.vue'" in source
     assert "'./AppPage': './src/components/AppPage.vue'" in source
     assert "'./AppPageMain': './src/components/AppPageMain.vue'" in source
     assert Path("plugins.v2/medialibrarykeeper/src/components/AppPageMain.vue").exists()
     assert "entryFileNames: 'assets/[name].js'" in source
     assert "chunkFileNames: 'assets/[name].js'" in source
     assert "assetFileNames: 'assets/[name][extname]'" in source
+    assert "import AppPage from './AppPage.vue'" in page_source
+    assert ':show_switch' not in page_source
+    assert "pageRef" not in page_source
 
 
 def test_medialibrarykeeper_frontend_media_cards_show_volume() -> None:
@@ -215,6 +221,7 @@ def test_medialibrarykeeper_does_not_register_api_on_plugin_reload() -> None:
 def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
     frontend = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    config_source = Path("plugins.v2/medialibrarykeeper/src/components/Config.vue").read_text(encoding="utf-8")
     provider = Path("plugins.v2/medialibrarykeeper/src/provider.js").read_text(encoding="utf-8")
     record_task_source = source.split("def _download_tasks_from_records", 1)[1].split("def _download_tasks_from_history", 1)[0]
     history_task_source = source.split("def _download_tasks_from_history", 1)[1].split("def _query_download_history_by_path", 1)[0]
@@ -342,6 +349,13 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "mediaRangeText" in frontend
     assert "recommendationRangeText" in frontend
     assert "slice(0, pageSize.value)" not in frontend
+    assert "shouldRefreshHostNavigation" in provider
+    assert "scheduleHostNavigationRefresh" in provider
+    assert "moviepilot:plugin-sidebar-nav-refresh" in provider
+    assert "window.location.reload()" in provider
+    assert "scheduleHostNavigationRefresh(props.pluginId)" in frontend
+    assert "scheduleHostNavigationRefresh(props.pluginId)" in config_source
+    assert "initialConfigSnapshot" in config_source
     assert "媒体库管家清理计划更新：" in source
     assert "媒体库管家清理计划更新识别" in source
     update_api_source = source.split("def update_cleanup_plan_items_api", 1)[1].split("def delete_cleanup_plan_api", 1)[0]

@@ -1,6 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { toEditableConfig, toPayloadConfig, unwrapResponse } from '../provider'
+import {
+  scheduleHostNavigationRefresh,
+  shouldRefreshHostNavigation,
+  toEditableConfig,
+  toPayloadConfig,
+  unwrapResponse,
+} from '../provider'
 
 const props = defineProps({
   api: {
@@ -28,12 +34,18 @@ const notice = ref({
 const mediaServerOptions = ref([])
 const downloaderOptions = ref([])
 const capabilities = ref({})
+const initialConfigSnapshot = ref(toEditableConfig())
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
 const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true)
 const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。')
 
 function saveConfig() {
-  emit('save', toPayloadConfig(config.value))
+  const payload = toPayloadConfig(config.value)
+  const needsNavigationRefresh = shouldRefreshHostNavigation(initialConfigSnapshot.value, payload)
+  emit('save', payload)
+  if (needsNavigationRefresh) {
+    scheduleHostNavigationRefresh(props.pluginId)
+  }
 }
 
 function showNotice(message, color = 'warning') {
@@ -72,6 +84,7 @@ async function loadMediaServerOptions() {
 
 onMounted(async () => {
   config.value = toEditableConfig(props.initialConfig)
+  initialConfigSnapshot.value = toEditableConfig(props.initialConfig)
   await loadMediaServerOptions()
 })
 </script>
