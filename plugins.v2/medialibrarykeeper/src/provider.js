@@ -85,6 +85,7 @@ export async function refreshHostNavigation(appContext, pluginId = 'MediaLibrary
   const sidebarStore = findHostPiniaStore(appContext, 'pluginSidebarNav')
   if (sidebarStore?.ensureSidebarNav) {
     await sidebarStore.ensureSidebarNav(true)
+    scheduleHostNavigationReload(delay)
     return true
   }
 

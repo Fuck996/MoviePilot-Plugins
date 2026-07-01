@@ -2,7 +2,6 @@
 import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import {
   refreshHostNavigation,
-  scheduleHostNavigationRefresh,
   shouldRefreshHostNavigation,
   toEditableConfig,
   toPayloadConfig,
@@ -26,7 +25,6 @@ const props = defineProps({
 
 const emit = defineEmits(['save', 'close'])
 const config = ref(toEditableConfig())
-const saving = ref(false)
 const loadingOptions = ref(false)
 const notice = ref({
   show: false,
@@ -42,36 +40,16 @@ const appContext = getCurrentInstance()?.appContext
 const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true)
 const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。')
 
-async function saveConfig() {
+function saveConfig() {
   const payload = toPayloadConfig(config.value)
   const needsNavigationRefresh = shouldRefreshHostNavigation(initialConfigSnapshot.value, payload)
 
-  if (!props.api?.put) {
-    if (needsNavigationRefresh) {
-      scheduleHostNavigationRefresh(props.pluginId)
-    }
-    emit('save', payload)
-    return
+  if (needsNavigationRefresh && typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      void refreshHostNavigation(appContext, props.pluginId)
+    }, 1200)
   }
-
-  saving.value = true
-  try {
-    const response = await props.api.put(`plugin/${props.pluginId || 'MediaLibraryKeeper'}`, payload)
-    if (response?.success === false) {
-      showNotice(response.message || '保存设置失败', 'error')
-      return
-    }
-    initialConfigSnapshot.value = toEditableConfig(payload)
-    showNotice('设置已保存', 'success')
-    if (needsNavigationRefresh) {
-      await refreshHostNavigation(appContext, props.pluginId)
-    }
-    emit('close')
-  } catch (err) {
-    showNotice(err?.message || '保存设置失败', 'error')
-  } finally {
-    saving.value = false
-  }
+  emit('save', payload)
 }
 
 function showNotice(message, color = 'warning') {
@@ -120,7 +98,7 @@ onMounted(async () => {
     <VToolbar density="comfortable" color="transparent">
       <div class="text-h6 ms-3">媒体库管家配置</div>
       <VSpacer />
-      <VBtn icon="mdi-content-save" variant="text" color="primary" :loading="saving" @click="saveConfig" />
+      <VBtn icon="mdi-content-save" variant="text" color="primary" @click="saveConfig" />
       <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
     </VToolbar>
     <VDivider />

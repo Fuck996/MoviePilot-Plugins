@@ -85,17 +85,12 @@ async function refreshHostNavigation(appContext, pluginId = 'MediaLibraryKeeper'
   const sidebarStore = findHostPiniaStore(appContext, 'pluginSidebarNav');
   if (sidebarStore?.ensureSidebarNav) {
     await sidebarStore.ensureSidebarNav(true);
+    scheduleHostNavigationReload(delay);
     return true
   }
 
   scheduleHostNavigationReload(delay);
   return false
-}
-
-function scheduleHostNavigationRefresh(pluginId = 'MediaLibraryKeeper', delay = 1200) {
-  if (typeof window === 'undefined') return
-  emitHostNavigationRefresh(pluginId);
-  scheduleHostNavigationReload(delay);
 }
 
 function emitHostNavigationRefresh(pluginId = 'MediaLibraryKeeper') {
@@ -481,4 +476,4 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-export { _export_sfc as _, toPayloadConfig as a, scheduleHostNavigationRefresh as b, formatBytes as c, readStatusCache as d, createDefaultConfig as e, formatNumber as f, createDefaultCleanupRule as g, planItemFromMedia as p, refreshHostNavigation as r, shouldRefreshHostNavigation as s, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };
+export { _export_sfc as _, toPayloadConfig as a, formatBytes as b, readStatusCache as c, createDefaultConfig as d, createDefaultCleanupRule as e, formatNumber as f, planItemFromMedia as p, refreshHostNavigation as r, shouldRefreshHostNavigation as s, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };

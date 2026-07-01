@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import.js';
-import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig, s as shouldRefreshHostNavigation, b as scheduleHostNavigationRefresh, r as refreshHostNavigation } from './_plugin-vue_export-helper.js';
+import { _ as _export_sfc, t as toEditableConfig, u as unwrapResponse, a as toPayloadConfig, s as shouldRefreshHostNavigation, r as refreshHostNavigation } from './_plugin-vue_export-helper.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock} = await importShared('vue');
 
@@ -33,7 +33,6 @@ const props = __props;
 
 const emit = __emit;
 const config = ref(toEditableConfig());
-const saving = ref(false);
 const loadingOptions = ref(false);
 const notice = ref({
   show: false,
@@ -49,36 +48,16 @@ const appContext = getCurrentInstance()?.appContext;
 const aiAgentReady = computed(() => capabilities.value.ai_agent_ready === true);
 const aiAgentMessage = computed(() => capabilities.value.ai_agent_message || '未配置智能助手，请先在系统设置中配置并启用智能助手。');
 
-async function saveConfig() {
+function saveConfig() {
   const payload = toPayloadConfig(config.value);
   const needsNavigationRefresh = shouldRefreshHostNavigation(initialConfigSnapshot.value, payload);
 
-  if (!props.api?.put) {
-    if (needsNavigationRefresh) {
-      scheduleHostNavigationRefresh(props.pluginId);
-    }
-    emit('save', payload);
-    return
+  if (needsNavigationRefresh && typeof window !== 'undefined') {
+    window.setTimeout(() => {
+      void refreshHostNavigation(appContext, props.pluginId);
+    }, 1200);
   }
-
-  saving.value = true;
-  try {
-    const response = await props.api.put(`plugin/${props.pluginId || 'MediaLibraryKeeper'}`, payload);
-    if (response?.success === false) {
-      showNotice(response.message || '保存设置失败', 'error');
-      return
-    }
-    initialConfigSnapshot.value = toEditableConfig(payload);
-    showNotice('设置已保存', 'success');
-    if (needsNavigationRefresh) {
-      await refreshHostNavigation(appContext, props.pluginId);
-    }
-    emit('close');
-  } catch (err) {
-    showNotice(err?.message || '保存设置失败', 'error');
-  } finally {
-    saving.value = false;
-  }
+  emit('save', payload);
 }
 
 function showNotice(message, color = 'warning') {
@@ -142,9 +121,8 @@ return (_ctx, _cache) => {
           icon: "mdi-content-save",
           variant: "text",
           color: "primary",
-          loading: saving.value,
           onClick: saveConfig
-        }, null, 8, ["loading"]),
+        }),
         _createVNode(_component_VBtn, {
           icon: "mdi-close",
           variant: "text",
@@ -240,6 +218,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-11b7bd2d"]]);
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-5bb2a1c8"]]);
 
 export { Config as default };

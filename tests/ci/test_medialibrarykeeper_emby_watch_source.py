@@ -40,12 +40,14 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.13"' in source
+    assert 'plugin_version = "1.0.15"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.13"
+    assert meta["version"] == "1.0.15"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.13"
-    assert list(meta["history"].keys()) == ["v1.0.13", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.15"
+    assert list(meta["history"].keys()) == ["v1.0.15", "v1.0.14", "v1.0.13", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert "左侧菜单立即同步" in meta["history"]["v1.0.15"]
+    assert "宿主保存链路" in meta["history"]["v1.0.14"]
     assert "侧栏导航缓存" in meta["history"]["v1.0.13"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
@@ -357,11 +359,15 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "scheduleHostNavigationRefresh" in provider
     assert "moviepilot:plugin-sidebar-nav-refresh" in provider
     assert "targetWindow.location.reload()" in provider
+    refresh_source = provider.split("export async function refreshHostNavigation", 1)[1].split("export function scheduleHostNavigationRefresh", 1)[0]
+    assert "await sidebarStore.ensureSidebarNav(true)" in refresh_source
+    assert "scheduleHostNavigationReload(delay)" in refresh_source
     assert "await refreshHostNavigation(appContext, props.pluginId)" in frontend
     assert "savedConfigSnapshot" in frontend
-    assert "props.api.put(`plugin/${props.pluginId || 'MediaLibraryKeeper'}`, payload)" in config_source
-    assert "await refreshHostNavigation(appContext, props.pluginId)" in config_source
-    assert "scheduleHostNavigationRefresh(props.pluginId)" in config_source
+    assert "props.api.put(`plugin/${props.pluginId || 'MediaLibraryKeeper'}`, payload)" not in config_source
+    assert "emit('save', payload)" in config_source
+    assert "void refreshHostNavigation(appContext, props.pluginId)" in config_source
+    assert "window.setTimeout" in config_source
     assert "initialConfigSnapshot" in config_source
     assert "媒体库管家清理计划更新：" in source
     assert "媒体库管家清理计划更新识别" in source
