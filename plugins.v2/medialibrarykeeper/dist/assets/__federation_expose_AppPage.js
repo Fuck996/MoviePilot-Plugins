@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import.js';
-import { _ as _export_sfc, t as toEditableConfig, d as createDefaultConfig, p as planItemFromMedia, f as formatNumber, c as formatBytes, a as toPayloadConfig, u as unwrapResponse, s as shouldRefreshHostNavigation, b as scheduleHostNavigationRefresh, r as readStatusCache, e as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper.js';
+import { _ as _export_sfc, t as toEditableConfig, e as createDefaultConfig, p as planItemFromMedia, f as formatNumber, c as formatBytes, a as toPayloadConfig, u as unwrapResponse, s as shouldRefreshHostNavigation, r as refreshHostNavigation, d as readStatusCache, g as createDefaultCleanupRule, w as writeStatusCache } from './_plugin-vue_export-helper.js';
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,createBlock:_createBlock,renderList:_renderList,Fragment:_Fragment,toDisplayString:_toDisplayString,unref:_unref,withModifiers:_withModifiers,mergeProps:_mergeProps,vShow:_vShow,withDirectives:_withDirectives,normalizeProps:_normalizeProps,guardReactiveProps:_guardReactiveProps} = await importShared('vue');
 
@@ -306,6 +306,7 @@ const deletePlanConfirmed = ref(false);
 const deletingPlan = ref(false);
 const queuePollTimer = ref(null);
 const configDraft = ref(toEditableConfig());
+const savedConfigSnapshot = ref(toEditableConfig());
 const status = ref({
   config: createDefaultConfig(),
   summary: {},
@@ -473,7 +474,9 @@ function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
 }
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value));
-const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast;
+const currentInstance = getCurrentInstance();
+const appContext = currentInstance?.appContext;
+const toast = appContext?.config.globalProperties?.$toast;
 const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })));
 const librarySwitchOptions = computed(() => [
   { title: '全部媒体库', value: '' },
@@ -909,6 +912,7 @@ function applyStatus(data, options = {}) {
       nextConfig.ai_suggestions = false;
     }
     configDraft.value = nextConfig;
+    savedConfigSnapshot.value = toEditableConfig(nextConfig);
   }
   if (options.persist !== false) {
     writeStatusCache(props.pluginId, status.value);
@@ -953,7 +957,7 @@ function cleanedMediaIdsFromHistory(history) {
 async function saveConfig() {
   saving.value = true;
   try {
-    const previousConfig = toPayloadConfig(status.value.config);
+    const previousConfig = toPayloadConfig(savedConfigSnapshot.value);
     const payload = toPayloadConfig(configDraft.value);
     const needsNavigationRefresh = shouldRefreshHostNavigation(previousConfig, payload);
     const response = await props.api.post(`${pluginBase.value}/config`, payload);
@@ -964,7 +968,7 @@ async function saveConfig() {
     applyStatus(unwrapResponse(response));
     showToast('设置已保存');
     if (needsNavigationRefresh) {
-      scheduleHostNavigationRefresh(props.pluginId);
+      await refreshHostNavigation(appContext, props.pluginId);
     }
   } catch (err) {
     showToast(err?.message || '保存设置失败', 'error');
@@ -3639,6 +3643,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-82fbdb79"]]);
+const AppPage = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-e403c965"]]);
 
 export { AppPage as default };

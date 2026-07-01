@@ -7,7 +7,7 @@ import {
   formatNumber,
   planItemFromMedia,
   readStatusCache,
-  scheduleHostNavigationRefresh,
+  refreshHostNavigation,
   shouldRefreshHostNavigation,
   toEditableConfig,
   toPayloadConfig,
@@ -74,6 +74,7 @@ const deletePlanConfirmed = ref(false)
 const deletingPlan = ref(false)
 const queuePollTimer = ref(null)
 const configDraft = ref(toEditableConfig())
+const savedConfigSnapshot = ref(toEditableConfig())
 const status = ref({
   config: createDefaultConfig(),
   summary: {},
@@ -241,7 +242,9 @@ function seedCandidateDownloaderName(candidate) {
   return candidate.downloader || '配置下载器'
 }
 const selectedLibrary = computed(() => libraries.value.find(item => item.id === selectedLibraryId.value))
-const toast = getCurrentInstance()?.appContext.config.globalProperties?.$toast
+const currentInstance = getCurrentInstance()
+const appContext = currentInstance?.appContext
+const toast = appContext?.config.globalProperties?.$toast
 const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
 const librarySwitchOptions = computed(() => [
   { title: '全部媒体库', value: '' },
@@ -677,6 +680,7 @@ function applyStatus(data, options = {}) {
       nextConfig.ai_suggestions = false
     }
     configDraft.value = nextConfig
+    savedConfigSnapshot.value = toEditableConfig(nextConfig)
   }
   if (options.persist !== false) {
     writeStatusCache(props.pluginId, status.value)
@@ -721,7 +725,7 @@ function cleanedMediaIdsFromHistory(history) {
 async function saveConfig() {
   saving.value = true
   try {
-    const previousConfig = toPayloadConfig(status.value.config)
+    const previousConfig = toPayloadConfig(savedConfigSnapshot.value)
     const payload = toPayloadConfig(configDraft.value)
     const needsNavigationRefresh = shouldRefreshHostNavigation(previousConfig, payload)
     const response = await props.api.post(`${pluginBase.value}/config`, payload)
@@ -732,7 +736,7 @@ async function saveConfig() {
     applyStatus(unwrapResponse(response))
     showToast('设置已保存')
     if (needsNavigationRefresh) {
-      scheduleHostNavigationRefresh(props.pluginId)
+      await refreshHostNavigation(appContext, props.pluginId)
     }
   } catch (err) {
     showToast(err?.message || '保存设置失败', 'error')

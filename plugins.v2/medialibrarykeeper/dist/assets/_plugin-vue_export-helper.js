@@ -78,8 +78,27 @@ function shouldRefreshHostNavigation(before = {}, after = {}) {
     || Boolean(before.show_sidebar_nav ?? true) !== Boolean(after.show_sidebar_nav ?? true)
 }
 
+async function refreshHostNavigation(appContext, pluginId = 'MediaLibraryKeeper', delay = 1200) {
+  if (typeof window === 'undefined') return false
+  emitHostNavigationRefresh(pluginId);
+
+  const sidebarStore = findHostPiniaStore(appContext, 'pluginSidebarNav');
+  if (sidebarStore?.ensureSidebarNav) {
+    await sidebarStore.ensureSidebarNav(true);
+    return true
+  }
+
+  scheduleHostNavigationReload(delay);
+  return false
+}
+
 function scheduleHostNavigationRefresh(pluginId = 'MediaLibraryKeeper', delay = 1200) {
   if (typeof window === 'undefined') return
+  emitHostNavigationRefresh(pluginId);
+  scheduleHostNavigationReload(delay);
+}
+
+function emitHostNavigationRefresh(pluginId = 'MediaLibraryKeeper') {
   try {
     window.localStorage?.setItem(
       `medialibrarykeeper:${pluginId || 'MediaLibraryKeeper'}:sidebar-refresh`,
@@ -91,9 +110,26 @@ function scheduleHostNavigationRefresh(pluginId = 'MediaLibraryKeeper', delay = 
   } catch (err) {
     console.debug('媒体库管家侧栏刷新信号发送失败', err);
   }
+}
+
+function scheduleHostNavigationReload(delay = 1200) {
   window.setTimeout(() => {
-    window.location.reload();
+    const targetWindow = window.top && window.top !== window ? window.top : window;
+    targetWindow.location.reload();
   }, delay);
+}
+
+function findHostPiniaStore(appContext, storeId) {
+  const provides = appContext?.provides;
+  if (!provides) return null
+
+  for (const symbol of Object.getOwnPropertySymbols(provides)) {
+    const provided = provides[symbol];
+    const store = provided?._s?.get?.(storeId);
+    if (store) return store
+  }
+
+  return null
 }
 
 function createCachePayload(status) {
@@ -445,4 +481,4 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-export { _export_sfc as _, toPayloadConfig as a, scheduleHostNavigationRefresh as b, formatBytes as c, createDefaultConfig as d, createDefaultCleanupRule as e, formatNumber as f, planItemFromMedia as p, readStatusCache as r, shouldRefreshHostNavigation as s, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };
+export { _export_sfc as _, toPayloadConfig as a, scheduleHostNavigationRefresh as b, formatBytes as c, readStatusCache as d, createDefaultConfig as e, formatNumber as f, createDefaultCleanupRule as g, planItemFromMedia as p, refreshHostNavigation as r, shouldRefreshHostNavigation as s, toEditableConfig as t, unwrapResponse as u, writeStatusCache as w };

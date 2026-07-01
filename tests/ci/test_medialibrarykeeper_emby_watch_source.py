@@ -40,12 +40,13 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.12"' in source
+    assert 'plugin_version = "1.0.13"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.12"
+    assert meta["version"] == "1.0.13"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.12"
-    assert list(meta["history"].keys()) == ["v1.0.12", "v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.13"
+    assert list(meta["history"].keys()) == ["v1.0.13", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert "侧栏导航缓存" in meta["history"]["v1.0.13"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
     assert "首次启用" in meta["history"]["v1.0.1"]
@@ -350,10 +351,16 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "recommendationRangeText" in frontend
     assert "slice(0, pageSize.value)" not in frontend
     assert "shouldRefreshHostNavigation" in provider
+    assert "refreshHostNavigation" in provider
+    assert "findHostPiniaStore" in provider
+    assert "'pluginSidebarNav'" in provider
     assert "scheduleHostNavigationRefresh" in provider
     assert "moviepilot:plugin-sidebar-nav-refresh" in provider
-    assert "window.location.reload()" in provider
-    assert "scheduleHostNavigationRefresh(props.pluginId)" in frontend
+    assert "targetWindow.location.reload()" in provider
+    assert "await refreshHostNavigation(appContext, props.pluginId)" in frontend
+    assert "savedConfigSnapshot" in frontend
+    assert "props.api.put(`plugin/${props.pluginId || 'MediaLibraryKeeper'}`, payload)" in config_source
+    assert "await refreshHostNavigation(appContext, props.pluginId)" in config_source
     assert "scheduleHostNavigationRefresh(props.pluginId)" in config_source
     assert "initialConfigSnapshot" in config_source
     assert "媒体库管家清理计划更新：" in source
