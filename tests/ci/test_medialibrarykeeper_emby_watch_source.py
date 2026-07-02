@@ -45,14 +45,13 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     assert meta["version"] == "1.0.17"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     assert plugin_package["version"] == "1.0.17"
-    assert list(meta["history"].keys()) == ["v1.0.17", "v1.0.16", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
-    assert "定时扫描服务" in meta["history"]["v1.0.16"]
+    assert list(meta["history"].keys()) == ["v1.0.17", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
     assert "左侧菜单立即同步" in meta["history"]["v1.0.15"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
     assert "首次启用" in meta["history"]["v1.0.1"]
     assert not any(key.startswith("v0.") for key in meta["history"])
-    assert not any(key in meta["history"] for key in ["v1.0.8", "v1.0.9", "v1.0.10", "v1.0.13", "v1.0.14"])
+    assert not any(key in meta["history"] for key in ["v1.0.8", "v1.0.9", "v1.0.10", "v1.0.13", "v1.0.14", "v1.0.16"])
 
 
 def test_medialibrarykeeper_sidebar_nav_is_controlled_by_visibility_setting() -> None:
