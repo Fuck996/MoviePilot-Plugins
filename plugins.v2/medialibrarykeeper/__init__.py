@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.16"
+    plugin_version = "1.0.17"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -274,6 +274,7 @@ class MediaLibraryKeeper(_PluginBase):
             self._config = self._normalize_config(config or {})
             self._enabled = bool(self._config.get("enabled"))
             self.update_config(self._config)
+            self._refresh_scheduled_service()
             return schemas.Response(success=True, data=self.get_status().data)
         except Exception as err:
             logger.error(f"保存媒体库管家配置失败：{err}")
@@ -375,6 +376,15 @@ class MediaLibraryKeeper(_PluginBase):
         if build_cleanup_batch:
             self._create_scheduled_cleanup_batch(snapshot)
         return snapshot
+
+    def _refresh_scheduled_service(self) -> None:
+        from app.scheduler import Scheduler
+
+        Scheduler().update_plugin_job(self.__class__.__name__)
+        logger.info(
+            "媒体库管家定时扫描服务已刷新："
+            f"enabled={self._enabled}，scan_cron={self._config.get('scan_cron')}"
+        )
 
     def sync_libraries(self, name_filters: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         services = self._active_emby_services(name_filters=name_filters)
