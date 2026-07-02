@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.15"
+    plugin_version = "1.0.16"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -115,7 +115,7 @@ class MediaLibraryKeeper(_PluginBase):
                 "name": "媒体库管家定时扫描",
                 "trigger": trigger,
                 "func": self.scan_library,
-                "kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True},
+                "func_kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True},
             }
         ]
 

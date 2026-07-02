@@ -40,12 +40,13 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.15"' in source
+    assert 'plugin_version = "1.0.16"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.15"
+    assert meta["version"] == "1.0.16"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.15"
-    assert list(meta["history"].keys()) == ["v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.16"
+    assert list(meta["history"].keys()) == ["v1.0.16", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert "定时扫描服务" in meta["history"]["v1.0.16"]
     assert "左侧菜单立即同步" in meta["history"]["v1.0.15"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
@@ -61,6 +62,16 @@ def test_medialibrarykeeper_sidebar_nav_is_controlled_by_visibility_setting() ->
     assert "show_sidebar_nav" in sidebar_source
     assert "not self.get_state()" not in sidebar_source
     assert '"nav_key": "main"' in sidebar_source
+
+
+def test_medialibrarykeeper_scheduled_scan_passes_cleanup_args_to_plugin_method() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    service_source = source.split("def get_service", 1)[1].split("def get_api", 1)[0]
+
+    assert '"func": self.scan_library' in service_source
+    assert '"func_kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True}' in service_source
+    assert '"kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True}' not in service_source
+    assert "CronTrigger.from_crontab" in service_source
 
 
 def test_medialibrarykeeper_app_page_exposes_stable_entry() -> None:
