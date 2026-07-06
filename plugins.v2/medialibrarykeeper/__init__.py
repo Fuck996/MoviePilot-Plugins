@@ -105,7 +105,9 @@ class MediaLibraryKeeper(_PluginBase):
         if not self._enabled or not self._config.get("scan_cron"):
             return None
         try:
-            trigger = CronTrigger.from_crontab(self._config["scan_cron"])
+            trigger = CronTrigger.from_crontab(
+                self._config["scan_cron"], timezone=settings.TZ
+            )
         except Exception as err:
             logger.error(f"媒体库管家定时扫描 Cron 配置无效：{err}")
             return None
@@ -887,7 +889,9 @@ class MediaLibraryKeeper(_PluginBase):
             normalized[key] = cls._to_bool(normalized.get(key, defaults[key]))
         normalized["disk_warning_free_gb"] = max(cls._to_int(normalized.get("disk_warning_free_gb"), 200), 0)
         normalized["disk_warning_free_percent"] = max(cls._to_int(normalized.get("disk_warning_free_percent"), 10), 0)
-        normalized["scan_cron"] = cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
+        normalized["scan_cron"] = cls._normalize_scan_cron(
+            cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
+        )
         for key in ["mediaservers", "downloaders", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
         normalized["path_mappings"] = cls._normalize_path_mappings(normalized.get("path_mappings"))
@@ -902,6 +906,12 @@ class MediaLibraryKeeper(_PluginBase):
         normalized["cleanup_min_size_gb"] = first_rule["min_size_gb"]
         normalized["cleanup_max_rating"] = first_rule["max_rating"]
         return normalized
+
+    @staticmethod
+    def _normalize_scan_cron(scan_cron: str) -> str:
+        if scan_cron == "0 3 * * 1":
+            return "0 3 * * mon"
+        return scan_cron
 
     @staticmethod
     def _default_cleanup_rule() -> Dict[str, Any]:

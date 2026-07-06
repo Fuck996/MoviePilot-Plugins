@@ -282,7 +282,7 @@ const scanCronOptions = [
   { title: '每 6 小时', value: '0 */6 * * *' },
   { title: '每 12 小时', value: '0 */12 * * *' },
   { title: '每天 03:00', value: '0 3 * * *' },
-  { title: '每周一 03:00', value: '0 3 * * 1' },
+  { title: '每周一 03:00', value: '0 3 * * mon' },
 ]
 const mediaWatchFilterOptions = ['全部', '已播放', '未播放']
 const cleanupWatchStateOptions = [

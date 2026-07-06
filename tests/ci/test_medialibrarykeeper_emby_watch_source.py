@@ -73,9 +73,24 @@ def test_medialibrarykeeper_scheduled_scan_passes_cleanup_args_to_plugin_method(
     assert '"func_kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True}' in service_source
     assert '"kwargs": {"notify_disk_warning": True, "build_cleanup_batch": True}' not in service_source
     assert "CronTrigger.from_crontab" in service_source
+    assert 'timezone=settings.TZ' in service_source
     assert "self._refresh_scheduled_service()" in config_source
     assert "from app.scheduler import Scheduler" in refresh_source
     assert "Scheduler().update_plugin_job(self.__class__.__name__)" in refresh_source
+    assert 'if scan_cron == "0 3 * * 1":' in source
+    assert 'return "0 3 * * mon"' in source
+
+
+def test_medialibrarykeeper_weekly_monday_cron_uses_apscheduler_weekday_name() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    dist_source = Path(
+        "plugins.v2/medialibrarykeeper/dist/assets/__federation_expose_AppPage.js"
+    ).read_text(encoding="utf-8")
+
+    assert "{ title: '每周一 03:00', value: '0 3 * * mon' }" in source
+    assert "{ title: '每周一 03:00', value: '0 3 * * 1' }" not in source
+    assert "{ title: '每周一 03:00', value: '0 3 * * mon' }" in dist_source
+    assert "{ title: '每周一 03:00', value: '0 3 * * 1' }" not in dist_source
 
 
 def test_medialibrarykeeper_app_page_exposes_stable_entry() -> None:
