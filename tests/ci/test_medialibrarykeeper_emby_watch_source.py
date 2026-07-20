@@ -40,12 +40,12 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.17"' in source
+    assert 'plugin_version = "1.0.19"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.17"
+    assert meta["version"] == "1.0.19"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.17"
-    assert list(meta["history"].keys()) == ["v1.0.17", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.19"
+    assert list(meta["history"].keys()) == ["v1.0.19", "v1.0.18", "v1.0.17", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
     assert "左侧菜单立即同步" in meta["history"]["v1.0.15"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]
@@ -517,6 +517,39 @@ def test_medialibrarykeeper_syncs_library_list_without_scanning_media_items() ->
     assert '"library_synced_at"' in source
 
 
+def test_medialibrarykeeper_display_libraries_are_independent_from_cleanup_scope() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    frontend = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    provider = Path("plugins.v2/medialibrarykeeper/src/provider.js").read_text(encoding="utf-8")
+    status_source = source.split("def get_status", 1)[1].split("def save_config_api", 1)[0]
+    display_source = source.split("def _display_snapshot", 1)[1].split("def _default_config", 1)[0]
+    cleanup_source = source.split("def _cleanup_candidates", 1)[1].split("def _media_in_cleanup_library", 1)[0]
+
+    assert '"display_libraries": []' in source
+    assert "display_libraries: []" in provider
+    assert "display_snapshot = self._display_snapshot(snapshot)" in status_source
+    assert '"all_libraries": snapshot.get("libraries", [])' in status_source
+    assert 'display_libraries = self._config.get("display_libraries") or []' in display_source
+    assert 'libraries = self._config.get("cleanup_libraries") or []' in cleanup_source
+    assert 'v-model="configDraft.display_libraries"' in frontend
+    assert "不影响清理计划生成" in frontend
+
+
+def test_medialibrarykeeper_path_mapping_can_be_scoped_to_library() -> None:
+    source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
+    frontend = Path("plugins.v2/medialibrarykeeper/src/components/AppPage.vue").read_text(encoding="utf-8")
+    provider = Path("plugins.v2/medialibrarykeeper/src/provider.js").read_text(encoding="utf-8")
+    mapping_source = source.split("def _apply_path_mappings", 1)[1].split("def _path_is_relative_to", 1)[0]
+
+    assert '"library_id": cls._clean_text(mapping.get("library_id"))' in source
+    assert "library: Optional[Dict[str, Any]] = None" in mapping_source
+    assert 'mapping_library = cls._clean_text((mapping or {}).get("library_id"))' in mapping_source
+    assert "if mapping_library and mapping_library not in library_values" in mapping_source
+    assert 'v-model="mapping.library_id"' in frontend
+    assert "hasDuplicateGlobalPathMappings" in frontend
+    assert "library_id: String(mapping?.library_id || '').trim()" in provider
+
+
 def test_medialibrarykeeper_disk_discovery_keeps_mount_points_separate() -> None:
     source = Path("plugins.v2/medialibrarykeeper/__init__.py").read_text(encoding="utf-8")
 
@@ -532,9 +565,9 @@ def test_medialibrarykeeper_maps_emby_paths_to_moviepilot_paths() -> None:
     assert '"path_mappings": []' in source
     assert "_normalize_path_mappings" in source
     assert "_map_emby_path" in source
-    assert "return sorted(normalized, key=lambda item: len(item[\"emby_path\"]), reverse=True)" in source
-    assert 'paths = [self._map_emby_path(path) for path in emby_paths]' in source
-    assert 'path = self._map_emby_path(episode.get("Path"))' in source
+    assert 'return sorted(normalized, key=lambda item: (0 if item.get("library_id") else 1, -len(item["emby_path"])))' in source
+    assert 'paths = [self._map_emby_path(path, library) for path in emby_paths]' in source
+    assert 'path = self._map_emby_path(episode.get("Path"), library)' in source
     assert "_media_root_directories" in source
     root_directories_source = source.split("def _media_root_directories", 1)[1].split("def _media_volume_paths", 1)[0]
     assert "self._media_volume_paths(item)" in root_directories_source

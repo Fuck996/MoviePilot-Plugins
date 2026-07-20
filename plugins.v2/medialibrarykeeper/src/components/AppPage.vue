@@ -79,6 +79,7 @@ const status = ref({
   config: createDefaultConfig(),
   summary: {},
   libraries: [],
+  all_libraries: [],
   media: [],
   recommendations: [],
   pending_plan: null,
@@ -92,6 +93,7 @@ const status = ref({
 const pluginBase = computed(() => `plugin/${props.pluginId || 'MediaLibraryKeeper'}`)
 const summary = computed(() => status.value.summary || {})
 const libraries = computed(() => status.value.libraries || [])
+const allLibraries = computed(() => status.value.all_libraries || libraries.value)
 const mediaRows = computed(() => status.value.media || [])
 const recommendationRows = computed(() => status.value.recommendations || [])
 const pendingPlan = computed(() => status.value.pending_plan)
@@ -245,10 +247,11 @@ const selectedLibrary = computed(() => libraries.value.find(item => item.id === 
 const currentInstance = getCurrentInstance()
 const appContext = currentInstance?.appContext
 const toast = appContext?.config.globalProperties?.$toast
-const libraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
+const libraryOptions = computed(() => allLibraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
+const visibleLibraryOptions = computed(() => libraries.value.map(item => ({ title: item.server ? `${item.title} · ${item.server}` : item.title, value: item.id })))
 const librarySwitchOptions = computed(() => [
   { title: '全部媒体库', value: '' },
-  ...libraryOptions.value,
+  ...visibleLibraryOptions.value,
 ])
 const directoryFilterOptions = computed(() => [
   { title: '全部目录', value: '', rootPath: '' },
@@ -269,6 +272,16 @@ const directoryFilterEntries = computed(() => {
     })
   }
   return [...options.values()].sort((left, right) => left.title.localeCompare(right.title, 'zh-CN'))
+})
+const hasDuplicateGlobalPathMappings = computed(() => {
+  const counts = new Map()
+  for (const mapping of configDraft.value.path_mappings || []) {
+    if (mapping.library_id) continue
+    const embyPath = normalizeFilterPath(mapping.emby_path)
+    if (!embyPath) continue
+    counts.set(embyPath, (counts.get(embyPath) || 0) + 1)
+  }
+  return [...counts.values()].some(count => count > 1)
 })
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
@@ -584,7 +597,7 @@ function removeCleanupRule(index) {
 function addPathMapping() {
   configDraft.value.path_mappings = [
     ...(configDraft.value.path_mappings || []),
-    { emby_path: '', mp_path: '' },
+    { library_id: '', emby_path: '', mp_path: '' },
   ]
 }
 
@@ -1501,6 +1514,16 @@ onUnmounted(() => {
                 <VTextField v-model.number="configDraft.disk_warning_free_gb" type="number" min="0" label="剩余容量低于 GB" />
                 <VTextField v-model.number="configDraft.disk_warning_free_percent" type="number" min="0" label="剩余比例低于 %" />
               </div>
+              <VSelect
+                v-model="configDraft.display_libraries"
+                label="显示统计媒体库"
+                :items="libraryOptions"
+                multiple
+                chips
+                clearable
+                hint="控制总览、媒体库、清理建议和磁盘统计展示；留空显示全部，不影响清理计划生成。"
+                persistent-hint
+              />
               <VAlert type="info" variant="tonal" density="comfortable">
                 定时任务会先扫描 Emby 媒体库，刷新容量状态和磁盘告警，再按下方清理计划规则生成待确认批次。
               </VAlert>
@@ -1523,10 +1546,21 @@ onUnmounted(() => {
                 rounded
                 class="mlk-path-mapping-row"
               >
+                <VSelect
+                  v-model="mapping.library_id"
+                  label="适用媒体库"
+                  :items="libraryOptions"
+                  clearable
+                  density="comfortable"
+                  hide-details
+                />
                 <VTextField v-model="mapping.emby_path" label="Emby 路径前缀" placeholder="/video" density="comfortable" hide-details />
                 <VTextField v-model="mapping.mp_path" label="MP 路径前缀" placeholder="/media/video" density="comfortable" hide-details />
                 <VBtn icon="mdi-delete-outline" color="error" variant="text" @click="removePathMapping(index)" />
               </VSheet>
+              <VAlert v-if="(configDraft.path_mappings || []).some(mapping => !mapping.library_id) && hasDuplicateGlobalPathMappings" type="warning" variant="tonal" density="comfortable">
+                存在相同 Emby 路径前缀的全局映射时，系统无法判断媒体应落到哪个 MP 目录。请为这些映射选择适用媒体库，或改成更具体的 Emby 子目录前缀。
+              </VAlert>
               <VAlert v-if="!(configDraft.path_mappings || []).length" type="info" variant="tonal" density="comfortable">
                 Emby 与 MoviePilot 挂载路径一致时无需配置。
               </VAlert>

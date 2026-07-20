@@ -53,7 +53,7 @@ class MediaLibraryKeeper(_PluginBase):
     plugin_name = "媒体库管家"
     plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
     plugin_icon = "emby.png"
-    plugin_version = "1.0.18"
+    plugin_version = "1.0.19"
     plugin_author = "fuck996"
     author_url = "https://github.com/Fuck996"
     plugin_config_prefix = "medialibrarykeeper_"
@@ -252,21 +252,23 @@ class MediaLibraryKeeper(_PluginBase):
 
     def get_status(self) -> schemas.Response:
         snapshot = self._with_proxy_image_urls(self._load_snapshot())
+        display_snapshot = self._display_snapshot(snapshot)
         return schemas.Response(
             success=True,
             data={
                 "config": self._config,
-                "summary": self._build_summary(snapshot),
-                "libraries": snapshot.get("libraries", []),
-                "media": snapshot.get("media", []),
-                "recommendations": self._build_recommendations(snapshot),
+                "summary": self._build_summary(display_snapshot),
+                "libraries": display_snapshot.get("libraries", []),
+                "all_libraries": snapshot.get("libraries", []),
+                "media": display_snapshot.get("media", []),
+                "recommendations": self._build_recommendations(display_snapshot),
                 "pending_plan": self.get_data(self.DATA_KEY_PENDING_PLAN) or None,
                 "cleanup_queue": self._queue_status(),
                 "history": self._load_history(),
                 "capabilities": self._capabilities(),
                 "media_server_options": self._media_server_options(),
                 "downloader_options": self._downloader_options(),
-                "cache": self._cache_meta(snapshot),
+                "cache": self._cache_meta(display_snapshot),
                 "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
         )
@@ -852,6 +854,29 @@ class MediaLibraryKeeper(_PluginBase):
             patched[key] = rows
         return patched
 
+    def _display_snapshot(self, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+        display_libraries = self._config.get("display_libraries") or []
+        filters = {self._clean_text(value) for value in display_libraries if self._clean_text(value)}
+        if not filters:
+            return snapshot
+
+        def keep_library(library: Dict[str, Any]) -> bool:
+            values = {
+                self._clean_text(library.get("id")),
+                self._clean_text(library.get("item_id")),
+                self._clean_text(library.get("title")),
+            }
+            return bool(values & filters)
+
+        patched = dict(snapshot)
+        patched["libraries"] = [item for item in snapshot.get("libraries", []) or [] if keep_library(item)]
+        patched["media"] = [
+            item
+            for item in snapshot.get("media", []) or []
+            if self._media_in_library_filters(item, filters)
+        ]
+        return patched
+
     @staticmethod
     def _default_config() -> Dict[str, Any]:
         return {
@@ -870,6 +895,7 @@ class MediaLibraryKeeper(_PluginBase):
             "downloader_path_mappings": [],
             "delete_seed_tasks": False,
             "library_names": [],
+            "display_libraries": [],
             "cleanup_libraries": [],
             "cleanup_rules": [MediaLibraryKeeper._default_cleanup_rule()],
             "cleanup_operator": "and",
@@ -892,7 +918,7 @@ class MediaLibraryKeeper(_PluginBase):
         normalized["scan_cron"] = cls._normalize_scan_cron(
             cls._clean_text(normalized.get("scan_cron")) or defaults["scan_cron"]
         )
-        for key in ["mediaservers", "downloaders", "cleanup_libraries"]:
+        for key in ["mediaservers", "downloaders", "display_libraries", "cleanup_libraries"]:
             normalized[key] = cls._to_list(normalized.get(key))
         normalized["path_mappings"] = cls._normalize_path_mappings(normalized.get("path_mappings"))
         normalized["downloader_path_mappings"] = cls._normalize_downloader_path_mappings(normalized.get("downloader_path_mappings"))
@@ -951,8 +977,12 @@ class MediaLibraryKeeper(_PluginBase):
             mp_path = cls._normalized_path_text(mapping.get("mp_path"))
             if not emby_path or not mp_path:
                 continue
-            normalized.append({"emby_path": emby_path, "mp_path": mp_path})
-        return sorted(normalized, key=lambda item: len(item["emby_path"]), reverse=True)
+            normalized.append({
+                "emby_path": emby_path,
+                "mp_path": mp_path,
+                "library_id": cls._clean_text(mapping.get("library_id")),
+            })
+        return sorted(normalized, key=lambda item: (0 if item.get("library_id") else 1, -len(item["emby_path"])))
 
     @classmethod
     def _normalize_downloader_path_mappings(cls, mappings: Any) -> List[Dict[str, str]]:
@@ -1110,8 +1140,8 @@ class MediaLibraryKeeper(_PluginBase):
             library = self._normalize_emby_library(item, service_info, server_name)
             if library and self._accept_library_name(library.get("title")):
                 emby_paths = library_paths.get(library.get("item_id")) or []
-                paths = [self._map_emby_path(path) for path in emby_paths]
-                fallback_path = self._map_emby_path(item.get("Path"))
+                paths = [self._map_emby_path(path, library) for path in emby_paths]
+                fallback_path = self._map_emby_path(item.get("Path"), library)
                 library["emby_paths"] = emby_paths
                 library["paths"] = paths
                 library["path"] = paths[0] if paths else fallback_path
@@ -1214,8 +1244,9 @@ class MediaLibraryKeeper(_PluginBase):
                         service,
                         user_ids,
                         normalized.get("item_id"),
-                        played_episode_ids,
-                        episode_user_data_by_item,
+                        library=library,
+                        played_episode_ids=played_episode_ids,
+                        episode_user_data_by_item=episode_user_data_by_item,
                     )
                     if stats:
                         normalized["total_episodes"] = stats["total_episodes"] or normalized.get("total_episodes", 0)
@@ -1407,6 +1438,7 @@ class MediaLibraryKeeper(_PluginBase):
         service: Any,
         user_ids: List[str],
         series_id: Any,
+        library: Optional[Dict[str, Any]] = None,
         played_episode_ids: Optional[set] = None,
         episode_user_data_by_item: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
@@ -1458,7 +1490,7 @@ class MediaLibraryKeeper(_PluginBase):
                     watched += 1
                 last_episode_added_at = self._max_date_text(last_episode_added_at, self._format_emby_date(episode.get("DateCreated")))
                 last_watched_at = self._max_date_text(last_watched_at, self._format_emby_date(user_data.get("LastPlayedDate")))
-                path = self._map_emby_path(episode.get("Path"))
+                path = self._map_emby_path(episode.get("Path"), library)
                 if path:
                     paths.append(path)
                 size += self._media_sources_size(episode.get("MediaSources") or [])
@@ -1518,7 +1550,7 @@ class MediaLibraryKeeper(_PluginBase):
         watched = played
         watch_state = self._watch_state(watched)
         emby_path = self._clean_text(item.get("Path"))
-        path = self._map_emby_path(emby_path)
+        path = self._map_emby_path(emby_path, library)
         library_name = self._clean_text(library.get("title")) or self._clean_text(item.get("ParentName"))
         added_at = self._format_emby_date(item.get("DateCreated"))
         last_watched_at = self._format_emby_date(user_data.get("LastPlayedDate"))
@@ -1912,12 +1944,15 @@ class MediaLibraryKeeper(_PluginBase):
         return sorted(candidates, key=lambda item: (-(int(item.get("size") or 0)), item.get("last_watched_at") or "", item.get("title") or ""))
 
     def _media_in_cleanup_library(self, item: Dict[str, Any], libraries: List[str]) -> bool:
+        filters = {self._clean_text(value) for value in libraries if self._clean_text(value)}
+        return self._media_in_library_filters(item, filters)
+
+    def _media_in_library_filters(self, item: Dict[str, Any], filters: set) -> bool:
         values = {
             self._clean_text(item.get("library")),
             self._clean_text(item.get("library_id")),
             self._clean_text(item.get("library_item_id")),
         }
-        filters = {self._clean_text(value) for value in libraries if self._clean_text(value)}
         return bool(values & filters)
 
     def _matches_cleanup_conditions(self, item: Dict[str, Any]) -> bool:
@@ -2414,18 +2449,33 @@ class MediaLibraryKeeper(_PluginBase):
                 result.append(clean_path)
         return result
 
-    def _map_emby_path(self, path: Any) -> str:
-        return self._apply_path_mappings(path, self._config.get("path_mappings") or [])
+    def _map_emby_path(self, path: Any, library: Optional[Dict[str, Any]] = None) -> str:
+        return self._apply_path_mappings(path, self._config.get("path_mappings") or [], library)
 
     @classmethod
-    def _apply_path_mappings(cls, path: Any, mappings: List[Dict[str, str]]) -> str:
+    def _apply_path_mappings(
+        cls,
+        path: Any,
+        mappings: List[Dict[str, str]],
+        library: Optional[Dict[str, Any]] = None,
+    ) -> str:
         clean_path = cls._normalized_path_text(path)
         if not clean_path:
             return ""
+        library_values = set()
+        if library:
+            library_values = {
+                cls._clean_text(library.get("id")),
+                cls._clean_text(library.get("item_id")),
+                cls._clean_text(library.get("title")),
+            }
         for mapping in mappings or []:
             emby_root = cls._normalized_path_text((mapping or {}).get("emby_path"))
             mp_root = cls._normalized_path_text((mapping or {}).get("mp_path"))
+            mapping_library = cls._clean_text((mapping or {}).get("library_id"))
             if not emby_root or not mp_root:
+                continue
+            if mapping_library and mapping_library not in library_values:
                 continue
             if clean_path == emby_root:
                 return mp_root
