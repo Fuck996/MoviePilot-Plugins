@@ -33,6 +33,7 @@ function createDefaultConfig() {
     downloader_path_mappings: [],
     delete_seed_tasks: false,
     library_names: [],
+    display_libraries: [],
     cleanup_libraries: [],
     cleanup_rules: [createDefaultCleanupRule()],
     cleanup_operator: 'and',
@@ -380,6 +381,7 @@ function normalizePathMappings(mappings) {
     .map(mapping => ({
       emby_path: normalizePathText(mapping?.emby_path),
       mp_path: normalizePathText(mapping?.mp_path),
+      library_id: String(mapping?.library_id || '').trim(),
     }))
     .filter(mapping => mapping.emby_path && mapping.mp_path)
 }
