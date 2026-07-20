@@ -40,12 +40,12 @@ def test_medialibrarykeeper_release_metadata_is_formal_version() -> None:
     plugin_package = json.loads(Path("plugins.v2/medialibrarykeeper/package.json").read_text(encoding="utf-8"))
     meta = package["MediaLibraryKeeper"]
 
-    assert 'plugin_version = "1.0.19"' in source
+    assert 'plugin_version = "1.0.20"' in source
     assert 'plugin_desc = "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"' in source
-    assert meta["version"] == "1.0.19"
+    assert meta["version"] == "1.0.20"
     assert meta["description"] == "自动定期整理Emby媒体库资源，联合清理释放硬盘空间。"
-    assert plugin_package["version"] == "1.0.19"
-    assert list(meta["history"].keys()) == ["v1.0.19", "v1.0.18", "v1.0.17", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
+    assert plugin_package["version"] == "1.0.20"
+    assert list(meta["history"].keys()) == ["v1.0.20", "v1.0.19", "v1.0.18", "v1.0.17", "v1.0.15", "v1.0.12", "v1.0.11", "v1.0.1"]
     assert "左侧菜单立即同步" in meta["history"]["v1.0.15"]
     assert "侧边栏入口" in meta["history"]["v1.0.12"]
     assert "分页" in meta["history"]["v1.0.11"]

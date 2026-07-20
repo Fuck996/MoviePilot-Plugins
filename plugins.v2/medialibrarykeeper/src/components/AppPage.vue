@@ -283,6 +283,13 @@ const hasDuplicateGlobalPathMappings = computed(() => {
   }
   return [...counts.values()].some(count => count > 1)
 })
+const pathMappingRequiresLibrary = mapping => {
+  const embyPath = normalizeFilterPath(mapping?.emby_path)
+  if (!embyPath) return false
+  return (configDraft.value.path_mappings || [])
+    .filter(item => normalizeFilterPath(item.emby_path) === embyPath)
+    .length > 1
+}
 const sortOptions = [
   { title: '最后一集添加日期', value: 'last_episode_added_at' },
   { title: '最后观看日期', value: 'last_watched_at' },
@@ -1546,17 +1553,26 @@ onUnmounted(() => {
                 rounded
                 class="mlk-path-mapping-row"
               >
-                <VSelect
-                  v-model="mapping.library_id"
-                  label="适用媒体库"
-                  :items="libraryOptions"
-                  clearable
-                  density="comfortable"
-                  hide-details
-                />
-                <VTextField v-model="mapping.emby_path" label="Emby 路径前缀" placeholder="/video" density="comfortable" hide-details />
-                <VTextField v-model="mapping.mp_path" label="MP 路径前缀" placeholder="/media/video" density="comfortable" hide-details />
-                <VBtn icon="mdi-delete-outline" color="error" variant="text" @click="removePathMapping(index)" />
+                <div class="mlk-path-mapping-scope">
+                  <VSelect
+                    v-if="pathMappingRequiresLibrary(mapping)"
+                    v-model="mapping.library_id"
+                    label="适用媒体库"
+                    :items="libraryOptions"
+                    clearable
+                    density="comfortable"
+                    hide-details
+                  />
+                  <div v-else class="mlk-path-mapping-hint text-body-2 text-medium-emphasis">
+                    <VIcon icon="mdi-check-circle-outline" color="success" size="18" />
+                    路径唯一，无需指定媒体库
+                  </div>
+                  <VBtn icon="mdi-delete-outline" color="error" variant="text" @click="removePathMapping(index)" />
+                </div>
+                <div class="mlk-path-mapping-fields">
+                  <VTextField v-model="mapping.emby_path" label="Emby 路径前缀" placeholder="/video" density="comfortable" hide-details />
+                  <VTextField v-model="mapping.mp_path" label="MP 路径前缀" placeholder="/media/video" density="comfortable" hide-details />
+                </div>
               </VSheet>
               <VAlert v-if="(configDraft.path_mappings || []).some(mapping => !mapping.library_id) && hasDuplicateGlobalPathMappings" type="warning" variant="tonal" density="comfortable">
                 存在相同 Emby 路径前缀的全局映射时，系统无法判断媒体应落到哪个 MP 目录。请为这些映射选择适用媒体库，或改成更具体的 Emby 子目录前缀。
@@ -2405,11 +2421,30 @@ onUnmounted(() => {
 }
 
 .mlk-path-mapping-row {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) 44px;
-  gap: 10px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 14px;
+}
+
+.mlk-path-mapping-scope {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 10px;
+  align-items: center;
+}
+
+.mlk-path-mapping-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.mlk-path-mapping-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .mlk-downloader-path-mapping-row {
@@ -2560,6 +2595,10 @@ onUnmounted(() => {
 
   .mlk-path-mapping-row,
   .mlk-downloader-path-mapping-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mlk-path-mapping-fields {
     grid-template-columns: 1fr;
   }
 
