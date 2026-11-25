@@ -402,7 +402,7 @@ def test_medialibrarykeeper_cleanup_uses_queue_and_keeps_details() -> None:
     assert "媒体库管家清理计划更新识别" in source
     update_api_source = source.split("def update_cleanup_plan_items_api", 1)[1].split("def delete_cleanup_plan_api", 1)[0]
     assert "_build_cleanup_plan(" not in update_api_source
-    assert "changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get(\"delete_source\"))) for item_id in new_ids]" in update_api_source
+    assert "changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get(\"delete_source\")), lookup) for item_id in new_ids]" in update_api_source
     assert "媒体库管家清理计划识别" in source
     assert "_ai_resource_recognition_for_record_missing" in source
     assert "_source_file_candidates_from_directory_mapping" in source

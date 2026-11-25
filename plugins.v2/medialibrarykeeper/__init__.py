@@ -5,6 +5,7 @@ import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlparse
@@ -44,6 +45,21 @@ def get_medialibrarykeeper_plugin():
     return _ACTIVE_PLUGIN
 
 
+def _serialize_plan_mutation(busy_result):
+    """Reject redundant requests rather than queue expensive duplicate plans."""
+    def decorate(func):
+        @wraps(func)
+        def wrapped(self, *args, **kwargs):
+            if not self._plan_lock.acquire(blocking=False):
+                return busy_result()
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self._plan_lock.release()
+        return wrapped
+    return decorate
+
+
 class MediaLibraryKeeper(_PluginBase):
     """
     媒体库管家。
@@ -76,6 +92,7 @@ class MediaLibraryKeeper(_PluginBase):
         self._config: Dict[str, Any] = self._default_config()
         self._enabled = False
         self._queue_lock = threading.Lock()
+        self._plan_lock = threading.Lock()
         self._queue_worker: Optional[threading.Thread] = None
 
     def init_plugin(self, config: dict = None):
@@ -420,6 +437,7 @@ class MediaLibraryKeeper(_PluginBase):
         logger.info(f"媒体库管家媒体库列表同步完成：libraries={len(deduped_libraries)}，errors={len(errors)}")
         return deduped_libraries
 
+    @_serialize_plan_mutation(lambda: schemas.Response(success=False, message="已有清理批次操作正在进行，请稍后再试。"))
     def create_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
         selected_ids = [self._clean_text(item) for item in payload.get("item_ids") or [] if self._clean_text(item)]
@@ -436,7 +454,7 @@ class MediaLibraryKeeper(_PluginBase):
             return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
 
         delete_source = bool(self._config.get("default_delete_source"))
-        plan = self._build_cleanup_plan([media_index[item_id] for item_id in selected_ids], delete_source, source="manual")
+        plan = self._build_cleanup_plan([media_index[item_id] for item_id in dict.fromkeys(selected_ids)], delete_source, source="manual")
         self.save_data(self.DATA_KEY_PENDING_PLAN, plan)
         if self._config.get("notify_enabled"):
             logger.info(
@@ -452,6 +470,7 @@ class MediaLibraryKeeper(_PluginBase):
             )
         return schemas.Response(success=True, data={"plan": plan, "status": self.get_status().data})
 
+    @_serialize_plan_mutation(lambda: schemas.Response(success=False, message="已有清理批次操作正在进行，请稍后再试。"))
     def update_cleanup_plan_items_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
         plan_id = self._clean_text(payload.get("plan_id"))
@@ -485,7 +504,8 @@ class MediaLibraryKeeper(_PluginBase):
             missing = [item_id for item_id in new_ids if item_id not in media_index]
             if missing:
                 return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
-            changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get("delete_source"))) for item_id in new_ids]
+            lookup = {}
+            changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get("delete_source")), lookup) for item_id in new_ids]
             plan = {**pending_plan, "items": [*plan_items, *changed_items]}
             added_count = len(changed_items)
             removed_count = 0
@@ -505,6 +525,7 @@ class MediaLibraryKeeper(_PluginBase):
         message = "已移出清理批次" if action == "remove" else "已加入清理批次" if added_count else "所选媒体已在当前批次中"
         return schemas.Response(success=True, message=message, data={"plan": plan, "status": self.get_status().data})
 
+    @_serialize_plan_mutation(lambda: schemas.Response(success=False, message="已有清理批次操作正在进行，请稍后再试。"))
     def delete_cleanup_plan_api(self, payload: Dict[str, Any] = Body(default=None)) -> schemas.Response:
         payload = payload or {}
         plan_id = self._clean_text(payload.get("plan_id"))
@@ -560,6 +581,7 @@ class MediaLibraryKeeper(_PluginBase):
     def get_history_api(self) -> schemas.Response:
         return schemas.Response(success=True, data={"history": self._load_history()})
 
+    @_serialize_plan_mutation(lambda: (False, "已有清理批次操作正在进行，请稍后再试。"))
     def _confirm_cleanup_plan(self, plan_id: str) -> Tuple[bool, str]:
         pending_plan = self.get_data(self.DATA_KEY_PENDING_PLAN) or {}
         clean_plan_id = self._clean_text(plan_id)
@@ -1773,7 +1795,8 @@ class MediaLibraryKeeper(_PluginBase):
     ) -> Dict[str, Any]:
         now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         batch_id = plan_id or datetime.now().strftime("%Y%m%d%H%M%S")
-        plan_items = [self._build_plan_item(media, delete_source) for media in media_items]
+        lookup = {}
+        plan_items = [self._build_plan_item(media, delete_source, lookup) for media in media_items]
         ready_count = len([item for item in plan_items if item.get("status") == "ready"])
         estimated_size = self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])
         plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
@@ -1897,6 +1920,7 @@ class MediaLibraryKeeper(_PluginBase):
             "manual": "手动选择",
         }.get(source, "手动选择")
 
+    @_serialize_plan_mutation(lambda: None)
     def _create_scheduled_cleanup_batch(
         self,
         snapshot: Dict[str, Any],
@@ -1986,7 +2010,8 @@ class MediaLibraryKeeper(_PluginBase):
             "rules": self._config.get("cleanup_rules") or [],
         }
 
-    def _build_plan_item(self, media: Dict[str, Any], delete_source: bool) -> Dict[str, Any]:
+    def _build_plan_item(self, media: Dict[str, Any], delete_source: bool, lookup: Optional[dict] = None) -> Dict[str, Any]:
+        lookup = lookup if lookup is not None else {}
         records = self._match_transfer_records(media)
         record_dest_targets: List[Dict[str, Any]] = []
         record_source_targets: List[Dict[str, Any]] = []
@@ -2005,8 +2030,8 @@ class MediaLibraryKeeper(_PluginBase):
         if delete_source:
             delete_targets.extend(mapping_source_targets or record_source_targets)
         delete_targets = self._dedupe_targets(delete_targets)
-        delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets), media)
-        download_tasks = self._download_tasks_for_media(media, records)
+        delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets, lookup), media)
+        download_tasks = self._download_tasks_for_media(media, records, lookup)
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
         ai_resource_candidates: List[Dict[str, Any]] = []
         ai_resource_state = ""
@@ -2018,7 +2043,7 @@ class MediaLibraryKeeper(_PluginBase):
         status = "ready" if has_media_library_target else "no_match"
         if source_record_missing:
             if self._ai_resource_recognition_enabled():
-                ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets)
+                ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets, lookup)
                 ai_resource_candidates = ai_result["candidates"]
                 ai_resource_state = ai_result["state"]
                 ai_resource_message = ai_result["message"]
@@ -2105,8 +2130,8 @@ class MediaLibraryKeeper(_PluginBase):
                 })
         return candidates
 
-    def _ai_resource_recognition_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> Dict[str, Any]:
-        source_candidates = self._source_file_candidates_from_directory_mapping(media, targets)
+    def _ai_resource_recognition_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> Dict[str, Any]:
+        source_candidates = self._source_file_candidates_from_directory_mapping(media, targets, lookup)
         if not source_candidates:
             logger.info(f"媒体库管家 AI资源任务识别：title={media.get('title')}，未找到可交给 AI 判断的疑似源文件")
             return {"state": "no_source_candidates", "message": "无疑似源文件", "candidates": []}
@@ -2122,7 +2147,7 @@ class MediaLibraryKeeper(_PluginBase):
         )
         return {"state": state, "message": message, "candidates": ai_selected}
 
-    def _source_file_candidates_from_directory_mapping(self, media: Dict[str, Any], targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _source_file_candidates_from_directory_mapping(self, media: Dict[str, Any], targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         storage = StorageChain()
         mappings = self._directory_mappings()
         candidates: List[Dict[str, Any]] = []
@@ -2142,8 +2167,7 @@ class MediaLibraryKeeper(_PluginBase):
                 continue
             storage_name = self._clean_text(getattr(mapping, "storage", "")) or "local"
             try:
-                parent_item = storage.get_file_item(storage=storage_name, path=Path(expected_parent))
-                siblings = storage.list_files(parent_item, recursion=False) if parent_item else []
+                siblings = self._batch_directory_children(storage, storage_name, Path(expected_parent), lookup)
             except Exception as err:
                 logger.warning(f"媒体库管家 AI资源任务识别读取源目录失败：path={expected_parent}，error={err}")
                 siblings = []
@@ -2365,7 +2389,7 @@ class MediaLibraryKeeper(_PluginBase):
             return fileitem.dict()
         return dict(fileitem)
 
-    def _with_scraping_targets(self, targets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _with_scraping_targets(self, targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         if not targets:
             return targets
         storage = StorageChain()
@@ -2374,7 +2398,7 @@ class MediaLibraryKeeper(_PluginBase):
         for target in targets:
             if target.get("kind") != "dest" or not self._is_media_file_path(target.get("path")):
                 continue
-            for scraping_target in self._scraping_targets_for_media_target(storage, target):
+            for scraping_target in self._scraping_targets_for_media_target(storage, target, lookup):
                 key = self._normalized_path_text(scraping_target.get("path")).lower()
                 if not key or key in seen_paths:
                     continue
@@ -2382,17 +2406,25 @@ class MediaLibraryKeeper(_PluginBase):
                 result.append(scraping_target)
         return result
 
-    def _scraping_targets_for_media_target(self, storage: StorageChain, target: Dict[str, Any]) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _batch_directory_children(storage: StorageChain, storage_name: str, parent: Path, lookup: Optional[dict]) -> List[Any]:
+        # Storage names are part of the key: identical paths on distinct backends
+        # must never share results. Cache only while constructing a plan.
+        directories = (lookup if lookup is not None else {}).setdefault("directories", {})
+        key = (storage_name, str(parent))
+        if key not in directories:
+            parent_item = storage.get_file_item(storage=storage_name, path=parent)
+            directories[key] = list(storage.list_files(parent_item, recursion=False) or []) if parent_item else []
+        return directories[key]
+
+    def _scraping_targets_for_media_target(self, storage: StorageChain, target: Dict[str, Any], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         path = self._normalized_path_text(target.get("path"))
         fileitem = target.get("fileitem") or {}
         storage_name = self._clean_text(fileitem.get("storage")) or "local"
         if not path:
             return []
         try:
-            parent_item = storage.get_file_item(storage=storage_name, path=Path(path).parent)
-            if not parent_item:
-                return []
-            siblings = storage.list_files(parent_item, recursion=False) or []
+            siblings = self._batch_directory_children(storage, storage_name, Path(path).parent, lookup)
         except Exception as err:
             logger.warning(f"媒体库管家读取同名刮削文件失败 {path}: {err}")
             return []
@@ -2617,12 +2649,13 @@ class MediaLibraryKeeper(_PluginBase):
             "date": self._clean_text(getattr(record, "date", "")),
         }
 
-    def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
+    def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         tasks = self._attach_candidate_downloaders(self._dedupe_download_tasks([
             *self._download_tasks_from_records(records),
             *self._download_tasks_from_history(media, records),
         ]))
-        return self._expand_related_download_tasks(self._enrich_download_tasks_from_configured_downloaders(tasks))
+        lookup = lookup if lookup is not None else {}
+        return self._expand_related_download_tasks(self._enrich_download_tasks_from_configured_downloaders(tasks, lookup), lookup)
 
     def _download_tasks_from_records(self, records: List[Any]) -> List[Dict[str, Any]]:
         tasks = []
@@ -2767,10 +2800,11 @@ class MediaLibraryKeeper(_PluginBase):
             task["candidate_downloaders"] = candidates
         return tasks
 
-    def _enrich_download_tasks_from_configured_downloaders(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _enrich_download_tasks_from_configured_downloaders(self, tasks: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         if not tasks:
             return tasks
-        candidates = self._configured_seed_cleanup_downloaders(DownloaderHelper())
+        lookup = lookup if lookup is not None else {}
+        candidates = self._batch_downloaders(lookup)
         candidate_names = [downloader for downloader, _ in candidates]
         for task in tasks:
             download_hash = self._clean_text(task.get("download_hash"))
@@ -2781,7 +2815,16 @@ class MediaLibraryKeeper(_PluginBase):
                 module = getattr(service_info, "module", None)
                 if not module:
                     continue
-                torrent = self._find_downloader_torrent(service_info, downloader, download_hash)
+                key = (downloader, download_hash.lower())
+                matches = lookup.setdefault("matches", {})
+                if key not in matches:
+                    snapshot = self._batch_torrent_index(module, downloader, lookup)
+                    # A successful all-tags snapshot is authoritative for exact hashes;
+                    # keep the legacy targeted fallback for unsupported/failed listings.
+                    matches[key] = snapshot["hashes"].get(key[1]) if snapshot is not None else None
+                    if matches[key] is None and (snapshot is None or snapshot["hashless"]):
+                        matches[key] = self._find_downloader_torrent(service_info, downloader, download_hash, lookup)
+                torrent = matches[key]
                 if not torrent:
                     continue
                 summary = self._downloader_torrent_summary(torrent)
@@ -2809,11 +2852,11 @@ class MediaLibraryKeeper(_PluginBase):
                 )
         return tasks
 
-    def _expand_related_download_tasks(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _expand_related_download_tasks(self, tasks: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         if not tasks:
             return tasks
-        helper = DownloaderHelper()
-        candidates = dict(self._configured_seed_cleanup_downloaders(helper))
+        lookup = lookup if lookup is not None else {}
+        candidates = dict(self._batch_downloaders(lookup))
         expanded = list(tasks)
         seen_hashes = {self._clean_text(task.get("download_hash")).lower() for task in tasks if task.get("download_hash")}
         for task in tasks:
@@ -2825,7 +2868,7 @@ class MediaLibraryKeeper(_PluginBase):
             module = getattr(service_info, "module", None) if service_info else None
             if not module or not hasattr(module, "list_torrents"):
                 continue
-            related = self._related_downloader_torrents(module, downloader, task)
+            related = self._related_downloader_torrents(module, downloader, task, lookup)
             for torrent in related:
                 torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
                 if not torrent_hash or torrent_hash in seen_hashes:
@@ -2853,46 +2896,71 @@ class MediaLibraryKeeper(_PluginBase):
                 )
         return self._dedupe_download_tasks(expanded)
 
-    def _related_downloader_torrents(self, module: Any, downloader: str, task: Dict[str, Any]) -> List[Any]:
+    def _batch_downloaders(self, lookup: dict) -> List[Tuple[str, Any]]:
+        if "downloaders" not in lookup:
+            lookup["downloaders"] = self._configured_seed_cleanup_downloaders(DownloaderHelper())
+        return lookup["downloaders"]
+
+    def _batch_torrent_index(self, module: Any, downloader: str, lookup: dict) -> Optional[dict]:
+        """One fresh list per downloader per batch, never shared across requests."""
+        indexes = lookup.setdefault("indexes", {})
+        if downloader in indexes:
+            return indexes[downloader]
+        if not hasattr(module, "list_torrents"):
+            indexes[downloader] = None
+            return None
         try:
-            torrents = module.list_torrents(downloader=downloader, include_all_tags=True) or []
+            torrents = module.list_torrents(downloader=downloader, include_all_tags=True)
+            if torrents is None:
+                raise RuntimeError("下载器未返回种子列表")
+            index = {"hashes": {}, "names": {}, "paths": {}, "order": {}, "hashless": False}
+            for torrent in torrents:
+                torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
+                if not torrent_hash:
+                    index["hashless"] = True
+                    continue
+                index["order"].setdefault(torrent_hash, len(index["order"]))
+                index["hashes"].setdefault(torrent_hash, torrent)
+                summary = self._downloader_torrent_summary(torrent)
+                name = self._normalized_seed_task_name(summary.get("name"))
+                path = self._normalized_path_text(summary.get("content_path")).lower()
+                if name:
+                    index["names"].setdefault(name, []).append(torrent_hash)
+                if path:
+                    index["paths"].setdefault(path, []).append(torrent_hash)
+            indexes[downloader] = index
         except Exception as err:
-            logger.warning(f"媒体库管家保种任务联动读取失败：downloader={downloader}，hash={task.get('download_hash')}，error={err}")
+            logger.warning(f"媒体库管家保种任务联动读取失败：downloader={downloader}，error={err}")
+            indexes[downloader] = None
+        return indexes[downloader]
+
+    def _related_downloader_torrents(self, module: Any, downloader: str, task: Dict[str, Any], lookup: Optional[dict] = None) -> List[Any]:
+        index = self._batch_torrent_index(module, downloader, lookup if lookup is not None else {})
+        if index is None:
             return []
         base_hash = self._clean_text(task.get("download_hash")).lower()
-        base_names = {
-            self._normalized_seed_task_name(value)
-            for value in [task.get("task_name"), task.get("title")]
-            if self._normalized_seed_task_name(value)
-        }
-        base_paths = {
-            self._normalized_path_text(value).lower()
-            for value in [task.get("content_path")]
-            if self._normalized_path_text(value)
-        }
-        related = []
-        for torrent in torrents:
-            torrent_hash = self._clean_text(self._object_value(torrent, "hash", "hashString", "hash_string")).lower()
-            if not torrent_hash or torrent_hash == base_hash:
-                continue
-            summary = self._downloader_torrent_summary(torrent)
-            torrent_name = self._normalized_seed_task_name(summary.get("name"))
-            torrent_path = self._normalized_path_text(summary.get("content_path")).lower()
-            if (torrent_path and torrent_path in base_paths) or (torrent_name and torrent_name in base_names):
-                related.append(torrent)
-        return related
+        matched = set()
+        for value in (task.get("task_name"), task.get("title")):
+            name = self._normalized_seed_task_name(value)
+            if name:
+                matched.update(index["names"].get(name, []))
+        path = self._normalized_path_text(task.get("content_path")).lower()
+        if path:
+            matched.update(index["paths"].get(path, []))
+        matched.discard(base_hash)
+        return [index["hashes"][key] for key in sorted(matched, key=index["order"].__getitem__)]
 
     @staticmethod
     def _normalized_seed_task_name(value: Any) -> str:
         return " ".join(str(value or "").strip().lower().split())
 
-    def _find_downloader_torrent(self, service_info: Any, downloader: str, download_hash: str) -> Optional[Any]:
+    def _find_downloader_torrent(self, service_info: Any, downloader: str, download_hash: str, lookup: Optional[dict] = None) -> Optional[Any]:
         module = getattr(service_info, "module", None)
         torrent = self._find_downloader_torrent_via_moviepilot_module(module, downloader, download_hash)
         if torrent:
             return torrent
         instance = getattr(service_info, "instance", None)
-        return self._find_downloader_torrent_via_get_torrents(instance or module, download_hash)
+        return self._find_downloader_torrent_via_get_torrents(instance or module, download_hash, lookup, downloader)
 
     def _find_downloader_torrent_via_moviepilot_module(self, module: Any, downloader: str, download_hash: str) -> Optional[Any]:
         if not module or not hasattr(module, "list_torrents"):
@@ -2912,7 +2980,7 @@ class MediaLibraryKeeper(_PluginBase):
                 return torrent
         return None
 
-    def _find_downloader_torrent_via_get_torrents(self, module: Any, download_hash: str) -> Optional[Any]:
+    def _find_downloader_torrent_via_get_torrents(self, module: Any, download_hash: str, lookup: Optional[dict] = None, downloader: str = "") -> Optional[Any]:
         if not module or not hasattr(module, "get_torrents"):
             return None
         clean_hash = download_hash.lower()
@@ -2921,7 +2989,13 @@ class MediaLibraryKeeper(_PluginBase):
             ({"ids": [download_hash]}, True),
             ({}, False),
         ]:
-            torrents = self._query_downloader_torrents(module, download_hash, args)
+            if targeted or lookup is None:
+                torrents = self._query_downloader_torrents(module, download_hash, args)
+            else:
+                fallback = lookup.setdefault("fallback_torrents", {})
+                if downloader not in fallback:
+                    fallback[downloader] = self._query_downloader_torrents(module, download_hash, args)
+                torrents = fallback[downloader]
             if not torrents:
                 continue
             torrent = self._match_downloader_torrent(torrents, clean_hash, targeted=targeted)

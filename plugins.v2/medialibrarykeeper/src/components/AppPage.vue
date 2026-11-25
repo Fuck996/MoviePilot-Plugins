@@ -643,6 +643,7 @@ function openHistoryDetail(item) {
 }
 
 async function createSinglePlan(item) {
+  if (creatingPlan.value || updatingPlan.value) return
   selectedMedia.value = [item]
   detailDialog.value = false
   await createPlan()
@@ -821,6 +822,7 @@ async function scanLibrary() {
 }
 
 async function createPlan() {
+  if (creatingPlan.value || updatingPlan.value) return
   creatingPlan.value = true
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan`, {
@@ -845,7 +847,7 @@ async function createPlan() {
 }
 
 async function updatePlanItems(action, itemIds) {
-  if (!pendingPlan.value?.id || !itemIds.length) return
+  if (creatingPlan.value || updatingPlan.value || !pendingPlan.value?.id || !itemIds.length) return
   updatingPlan.value = true
   try {
     const response = await props.api.post(`${pluginBase.value}/cleanup/plan/items`, {
