@@ -18,6 +18,7 @@ def _load_methods():
         "_batch_downloaders", "_batch_torrent_index", "_related_downloader_torrents",
         "_enrich_download_tasks_from_configured_downloaders", "_expand_related_download_tasks",
         "_dedupe_download_tasks", "_batch_directory_children",
+        "_query_download_history_by_path", "_batch_directory_mappings", "_fileitem_from_storage_path", "_media_file_paths",
     }
     cls.bases = []
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
@@ -86,3 +87,46 @@ def test_plan_lock_rejects_duplicate_and_releases_after_exception():
         raise AssertionError("expected error")
     assert build(obj) == "created"
     assert calls == [True, False]
+
+
+def test_series_history_parent_only_queried_and_contributed_once():
+    cls, _ = _load_methods()
+    p = cls()
+    parent_calls = []
+    exact_calls = []
+    parent_rows = [SimpleNamespace(id=i) for i in range(100)]
+    oper = SimpleNamespace(
+        get_files_by_savepath=lambda **kw: parent_calls.append(kw) or parent_rows,
+        get_file_by_fullpath=lambda **kw: exact_calls.append(kw) or None,
+    )
+    lookup = {}
+    seen_parents = set()
+    results = []
+    for i in range(100):
+        results.extend(p._query_download_history_by_path(oper, f"/series/e{i}.mkv", lookup, seen_parents))
+    assert len(parent_calls) == 1 and len(exact_calls) == 100
+    assert results == parent_rows
+    # Another item in that directory gets the same records, with no stale cache
+    # across batches and without re-querying within this batch.
+    assert p._query_download_history_by_path(oper, "/series/e0.mkv", lookup, set()) == parent_rows
+    assert len(parent_calls) == 1 and len(exact_calls) == 100
+    p._query_download_history_by_path(oper, "/series/e0.mkv", {}, set())
+    assert len(parent_calls) == 2
+
+
+def test_directory_mappings_and_file_items_cached_per_batch():
+    cls, _ = _load_methods()
+    p = cls()
+    calls = []
+    p._directory_mappings = lambda: calls.append("config") or ["mapping"]
+    lookup = {}
+    assert p._batch_directory_mappings(lookup) == ["mapping"]
+    assert p._batch_directory_mappings(lookup) == ["mapping"]
+    assert calls == ["config"]
+    storage = SimpleNamespace(get_file_item=lambda **kw: calls.append(kw) or {"size": 42})
+    a = p._fileitem_from_storage_path(storage, "local", "/a.mkv", lookup)
+    a["size"] = 0
+    assert p._fileitem_from_storage_path(storage, "local", "/a.mkv", lookup)["size"] == 42
+    p._fileitem_from_storage_path(storage, "remote", "/a.mkv", lookup)
+    p._fileitem_from_storage_path(storage, "local", "/a.mkv", {})
+    assert len(calls) == 4

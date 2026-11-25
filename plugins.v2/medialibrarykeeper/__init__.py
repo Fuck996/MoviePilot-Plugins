@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import threading
+from time import monotonic
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
@@ -1793,6 +1794,7 @@ class MediaLibraryKeeper(_PluginBase):
         plan_id: Optional[str] = None,
         created_at: Optional[str] = None,
     ) -> Dict[str, Any]:
+        started = monotonic()
         now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         batch_id = plan_id or datetime.now().strftime("%Y%m%d%H%M%S")
         lookup = {}
@@ -1816,6 +1818,7 @@ class MediaLibraryKeeper(_PluginBase):
             "message": self._plan_message(plan_status, plan_items),
         }
         self._log_cleanup_plan(plan)
+        logger.info(f"媒体库管家批次生成耗时：batch={batch_id}，items={len(plan_items)}，seconds={monotonic()-started:.2f}")
         return plan
 
     def _refresh_cleanup_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -2012,7 +2015,9 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _build_plan_item(self, media: Dict[str, Any], delete_source: bool, lookup: Optional[dict] = None) -> Dict[str, Any]:
         lookup = lookup if lookup is not None else {}
-        records = self._match_transfer_records(media)
+        started = monotonic()
+        records = self._match_transfer_records(media, lookup)
+        records_done = monotonic()
         record_dest_targets: List[Dict[str, Any]] = []
         record_source_targets: List[Dict[str, Any]] = []
         for record in records:
@@ -2023,7 +2028,7 @@ class MediaLibraryKeeper(_PluginBase):
             if delete_source and isinstance(src_fileitem, dict):
                 record_source_targets.append(self._target_from_history(record, "src", src_fileitem))
 
-        mapping_targets = self._targets_from_directory_mapping(media, delete_source)
+        mapping_targets = self._targets_from_directory_mapping(media, delete_source, lookup)
         mapping_dest_targets = [target for target in mapping_targets if target.get("kind") == "dest"]
         mapping_source_targets = [target for target in mapping_targets if target.get("kind") == "src"]
         delete_targets = list(mapping_dest_targets or record_dest_targets)
@@ -2031,7 +2036,9 @@ class MediaLibraryKeeper(_PluginBase):
             delete_targets.extend(mapping_source_targets or record_source_targets)
         delete_targets = self._dedupe_targets(delete_targets)
         delete_targets = self._annotate_targets_for_media(self._with_scraping_targets(delete_targets, lookup), media)
+        storage_done = monotonic()
         download_tasks = self._download_tasks_for_media(media, records, lookup)
+        download_done = monotonic()
         seed_candidates = [] if download_tasks else self._seed_task_candidates_from_targets(media, delete_targets)
         ai_resource_candidates: List[Dict[str, Any]] = []
         ai_resource_state = ""
@@ -2060,6 +2067,11 @@ class MediaLibraryKeeper(_PluginBase):
             message = f"整理记录丢失，已按目录映射识别 {dest_count} 个媒体库文件、{src_count} 个源文件，请审核后执行。"
         else:
             message = "未匹配整理记录，也未能通过目录映射定位文件；接入 AI 后可辅助识别源文件。"
+        logger.info(
+            f"媒体库管家批次条目耗时：media={media.get('id')}，"
+            f"records={records_done-started:.2f}s，storage={storage_done-records_done:.2f}s，"
+            f"downloads={download_done-storage_done:.2f}s，review={monotonic()-download_done:.2f}s"
+        )
         return {
             "media_id": media.get("id"),
             "title": media.get("title"),
@@ -2149,7 +2161,7 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _source_file_candidates_from_directory_mapping(self, media: Dict[str, Any], targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         storage = StorageChain()
-        mappings = self._directory_mappings()
+        mappings = self._batch_directory_mappings(lookup)
         candidates: List[Dict[str, Any]] = []
         seen = set()
         dest_paths = [
@@ -2289,8 +2301,8 @@ class MediaLibraryKeeper(_PluginBase):
     def _json_dumps(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False, default=str)
 
-    def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool) -> List[Dict[str, Any]]:
-        mappings = self._directory_mappings()
+    def _targets_from_directory_mapping(self, media: Dict[str, Any], delete_source: bool, lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
+        mappings = self._batch_directory_mappings(lookup)
         if not mappings:
             return []
 
@@ -2303,7 +2315,7 @@ class MediaLibraryKeeper(_PluginBase):
             dest_fileitem = self._fileitem_from_storage_path(
                 storage,
                 self._clean_text(getattr(mapping, "library_storage", "")) or "local",
-                media_path,
+                media_path, lookup,
             )
             if dest_fileitem:
                 targets.append(self._target_from_mapping("dest", media_path, dest_fileitem, mapping))
@@ -2317,11 +2329,18 @@ class MediaLibraryKeeper(_PluginBase):
             src_fileitem = self._fileitem_from_storage_path(
                 storage,
                 self._clean_text(getattr(mapping, "storage", "")) or "local",
-                source_path,
+                source_path, lookup,
             )
             if src_fileitem:
                 targets.append(self._target_from_mapping("src", source_path, src_fileitem, mapping))
         return self._dedupe_targets(targets)
+
+    def _batch_directory_mappings(self, lookup: Optional[dict]) -> List[Any]:
+        if lookup is None:
+            return self._directory_mappings()
+        if "directory_mappings" not in lookup:
+            lookup["directory_mappings"] = self._directory_mappings()
+        return lookup["directory_mappings"]
 
     def _directory_mappings(self) -> List[Any]:
         try:
@@ -2373,21 +2392,30 @@ class MediaLibraryKeeper(_PluginBase):
             },
         }
 
-    def _fileitem_from_storage_path(self, storage: StorageChain, storage_name: str, path: str) -> Optional[Dict[str, Any]]:
+    def _fileitem_from_storage_path(self, storage: StorageChain, storage_name: str, path: str, lookup: Optional[dict] = None) -> Optional[Dict[str, Any]]:
         if not path:
             return None
+        cache = (lookup if lookup is not None else {}).setdefault("fileitems", {})
+        key = (storage_name or "local", path)
+        if key in cache:
+            # Downstream annotations must not mutate another item's cached file metadata.
+            return dict(cache[key]) if cache[key] is not None else None
         try:
             fileitem = storage.get_file_item(storage=storage_name or "local", path=Path(path))
         except Exception as err:
             logger.warning(f"媒体库管家读取文件项失败 {path}: {err}")
             return None
         if not fileitem:
+            cache[key] = None
             return None
         if hasattr(fileitem, "model_dump"):
-            return fileitem.model_dump()
-        if hasattr(fileitem, "dict"):
-            return fileitem.dict()
-        return dict(fileitem)
+            data = fileitem.model_dump()
+        elif hasattr(fileitem, "dict"):
+            data = fileitem.dict()
+        else:
+            data = dict(fileitem)
+        cache[key] = data
+        return dict(data)
 
     def _with_scraping_targets(self, targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         if not targets:
@@ -2474,12 +2502,7 @@ class MediaLibraryKeeper(_PluginBase):
             paths = []
         if not paths and media.get("path"):
             paths = [media.get("path")]
-        result = []
-        for path in paths:
-            clean_path = self._clean_text(path)
-            if clean_path and clean_path not in result:
-                result.append(clean_path)
-        return result
+        return list(dict.fromkeys(self._clean_text(path) for path in paths if self._clean_text(path)))
 
     def _map_emby_path(self, path: Any, library: Optional[Dict[str, Any]] = None) -> str:
         return self._apply_path_mappings(path, self._config.get("path_mappings") or [], library)
@@ -2545,14 +2568,21 @@ class MediaLibraryKeeper(_PluginBase):
     def _normalized_path_text(path: Any) -> str:
         return str(path or "").strip().replace("\\", "/").rstrip("/")
 
-    def _match_transfer_records(self, media: Dict[str, Any]) -> List[Any]:
+    def _match_transfer_records(self, media: Dict[str, Any], lookup: Optional[dict] = None) -> List[Any]:
         records: List[Any] = []
         title = self._clean_text(media.get("title"))
         tmdbid = self._clean_text((media.get("provider_ids") or {}).get("Tmdb"))
+        queries = (lookup if lookup is not None else {}).setdefault("transfer_queries", {})
         if tmdbid:
-            records.extend(self._query_transfer_by_tmdb(tmdbid, media.get("type")))
+            key = ("tmdb", tmdbid, media.get("type"))
+            if key not in queries:
+                queries[key] = self._query_transfer_by_tmdb(tmdbid, media.get("type"))
+            records.extend(queries[key])
         if title:
-            records.extend(self._query_transfer_by_title(title))
+            key = ("title", title)
+            if key not in queries:
+                queries[key] = self._query_transfer_by_title(title)
+            records.extend(queries[key])
 
         paths = self._media_file_paths(media)
         matched = []
@@ -2592,7 +2622,7 @@ class MediaLibraryKeeper(_PluginBase):
     def _query_transfer_by_tmdb(self, tmdbid: str, media_type: str) -> List[Any]:
         oper = TransferHistoryOper()
         records = []
-        for mtype in [media_type, media_type.upper() if media_type else "", "MOV" if media_type == "movie" else "TV"]:
+        for mtype in dict.fromkeys([media_type, media_type.upper() if media_type else "", "MOV" if media_type == "movie" else "TV"]):
             if not mtype:
                 continue
             try:
@@ -2652,7 +2682,7 @@ class MediaLibraryKeeper(_PluginBase):
     def _download_tasks_for_media(self, media: Dict[str, Any], records: List[Any], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         tasks = self._attach_candidate_downloaders(self._dedupe_download_tasks([
             *self._download_tasks_from_records(records),
-            *self._download_tasks_from_history(media, records),
+            *self._download_tasks_from_history(media, records, lookup),
         ]))
         lookup = lookup if lookup is not None else {}
         return self._expand_related_download_tasks(self._enrich_download_tasks_from_configured_downloaders(tasks, lookup), lookup)
@@ -2678,13 +2708,22 @@ class MediaLibraryKeeper(_PluginBase):
             })
         return self._dedupe_download_tasks(tasks)
 
-    def _download_tasks_from_history(self, media: Dict[str, Any], records: List[Any]) -> List[Dict[str, Any]]:
+    def _download_tasks_from_history(self, media: Dict[str, Any], records: List[Any], lookup: Optional[dict] = None) -> List[Dict[str, Any]]:
         if not DownloadHistoryOper:
             return []
+        lookup = lookup if lookup is not None else {}
         oper = DownloadHistoryOper()
         history_items: List[Any] = []
+        seen_history = set()
+        def add_history(items):
+            for item in items:
+                key = getattr(item, "id", None) or id(item)
+                if key not in seen_history:
+                    seen_history.add(key)
+                    history_items.append(item)
+        seen_parents = set()
         for path in self._media_file_paths(media):
-            history_items.extend(self._query_download_history_by_path(oper, path))
+            add_history(self._query_download_history_by_path(oper, path, lookup, seen_parents))
         tmdbid = self._clean_text((media.get("provider_ids") or {}).get("Tmdb"))
         if tmdbid and hasattr(oper, "get_by_mediaid"):
             try:
@@ -2692,9 +2731,9 @@ class MediaLibraryKeeper(_PluginBase):
             except Exception:
                 media_history = []
             if isinstance(media_history, list):
-                history_items.extend(media_history)
+                add_history(media_history)
             elif media_history:
-                history_items.append(media_history)
+                add_history([media_history])
         title = self._clean_text(media.get("title"))
         if title and hasattr(oper, "get_last_by"):
             mtype = "MOV" if media.get("type") == "movie" else "TV"
@@ -2703,9 +2742,9 @@ class MediaLibraryKeeper(_PluginBase):
             except Exception:
                 item = None
             if isinstance(item, list):
-                history_items.extend(item)
+                add_history(item)
             elif item:
-                history_items.append(item)
+                add_history([item])
 
         record_ids = {getattr(record, "id", None) for record in records if getattr(record, "id", None) is not None}
         tasks: List[Dict[str, Any]] = []
@@ -2737,43 +2776,56 @@ class MediaLibraryKeeper(_PluginBase):
             })
         return self._dedupe_download_tasks(tasks)
 
-    def _query_download_history_by_path(self, oper: Any, path: str) -> List[Any]:
-        result: List[Any] = []
+    def _query_download_history_by_path(self, oper: Any, path: str, lookup: Optional[dict] = None, seen_parents: Optional[set] = None) -> List[Any]:
         clean_path = self._normalized_path_text(path)
         if not clean_path:
-            return result
-        if hasattr(oper, "get_file_by_fullpath"):
-            try:
-                item = oper.get_file_by_fullpath(fullpath=clean_path)
-            except TypeError:
+            return []
+        lookup = lookup if lookup is not None else {}
+        paths = lookup.setdefault("download_history_paths", {})
+        if clean_path not in paths:
+            exact = []
+            by_path = []
+            if hasattr(oper, "get_file_by_fullpath"):
                 try:
-                    item = oper.get_file_by_fullpath(clean_path)
+                    item = oper.get_file_by_fullpath(fullpath=clean_path)
+                except TypeError:
+                    try:
+                        item = oper.get_file_by_fullpath(clean_path)
+                    except Exception:
+                        item = None
                 except Exception:
                     item = None
-            except Exception:
-                item = None
-            if item:
-                result.append(item)
+                if item:
+                    exact.append(item)
+            if hasattr(oper, "list_by_path"):
+                try:
+                    by_path = list(oper.list_by_path(path=clean_path) or [])
+                except Exception:
+                    by_path = []
+            paths[clean_path] = (exact, by_path)
+        exact, by_path = paths[clean_path]
+        result = list(exact)
         if hasattr(oper, "get_files_by_savepath"):
             save_path = str(Path(clean_path).parent)
-            try:
-                items = oper.get_files_by_savepath(fullpath=save_path)
-            except TypeError:
-                try:
-                    items = oper.get_files_by_savepath(save_path)
-                except Exception:
-                    items = []
-            except Exception:
-                items = []
-            if items:
-                result.extend(items)
-        if hasattr(oper, "list_by_path"):
-            try:
-                items = oper.list_by_path(path=clean_path)
-            except Exception:
-                items = []
-            if items:
-                result.extend(items)
+            # Parent results already contributed to this media item; do not
+            # duplicate the whole directory result for each episode.
+            if seen_parents is None or save_path not in seen_parents:
+                parents = lookup.setdefault("download_history_parents", {})
+                if save_path not in parents:
+                    try:
+                        items = oper.get_files_by_savepath(fullpath=save_path)
+                    except TypeError:
+                        try:
+                            items = oper.get_files_by_savepath(save_path)
+                        except Exception:
+                            items = []
+                    except Exception:
+                        items = []
+                    parents[save_path] = list(items or [])
+                result.extend(parents[save_path])
+                if seen_parents is not None:
+                    seen_parents.add(save_path)
+        result.extend(by_path)
         return result
 
     def _selected_downloader_names(self) -> set:
@@ -3575,12 +3627,7 @@ class MediaLibraryKeeper(_PluginBase):
             paths.extend(item.get("episode_paths") or [])
         if item.get("path"):
             paths.append(item.get("path"))
-        result = []
-        for path in paths:
-            clean_path = self._clean_text(path)
-            if clean_path and clean_path not in result:
-                result.append(clean_path)
-        return result
+        return list(dict.fromkeys(self._clean_text(path) for path in paths if self._clean_text(path)))
 
     def _volume_status_for_path(self, path: Any, cache: Dict[Any, Dict[str, Any]]) -> Dict[str, Any]:
         disk_path = self._existing_disk_path(path)
