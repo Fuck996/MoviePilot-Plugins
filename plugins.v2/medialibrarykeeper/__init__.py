@@ -505,8 +505,9 @@ class MediaLibraryKeeper(_PluginBase):
             missing = [item_id for item_id in new_ids if item_id not in media_index]
             if missing:
                 return schemas.Response(success=False, message="所选媒体不在最近一次扫描结果中，请先重新扫描媒体库。")
-            lookup = {}
+            lookup = {"ai_jobs": []}
             changed_items = [self._build_plan_item(media_index[item_id], bool(pending_plan.get("delete_source")), lookup) for item_id in new_ids]
+            self._resolve_batch_ai(changed_items, lookup)
             plan = {**pending_plan, "items": [*plan_items, *changed_items]}
             added_count = len(changed_items)
             removed_count = 0
@@ -1797,8 +1798,9 @@ class MediaLibraryKeeper(_PluginBase):
         started = monotonic()
         now_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         batch_id = plan_id or datetime.now().strftime("%Y%m%d%H%M%S")
-        lookup = {}
+        lookup = {"ai_jobs": []}
         plan_items = [self._build_plan_item(media, delete_source, lookup) for media in media_items]
+        self._resolve_batch_ai(plan_items, lookup)
         ready_count = len([item for item in plan_items if item.get("status") == "ready"])
         estimated_size = self._sum_unique_target_size([item for item in plan_items if item.get("status") == "ready"])
         plan_status = "ready" if plan_items and ready_count == len(plan_items) else "empty" if not plan_items else "blocked"
@@ -2050,10 +2052,22 @@ class MediaLibraryKeeper(_PluginBase):
         status = "ready" if has_media_library_target else "no_match"
         if source_record_missing:
             if self._ai_resource_recognition_enabled():
-                ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets, lookup)
-                ai_resource_candidates = ai_result["candidates"]
-                ai_resource_state = ai_result["state"]
-                ai_resource_message = ai_result["message"]
+                if "ai_jobs" in lookup:
+                    # Resolve storage candidates serially; only independent LLM
+                    # requests run concurrently. Never share mutable lookup caches.
+                    candidates = self._source_file_candidates_from_directory_mapping(media, delete_targets, lookup)
+                    if candidates:
+                        lookup["ai_jobs"].append((media, candidates))
+                        ai_resource_state = "pending"
+                        ai_resource_message = "等待 AI 识别"
+                    else:
+                        ai_resource_state = "no_source_candidates"
+                        ai_resource_message = "无疑似源文件"
+                else:
+                    ai_result = self._ai_resource_recognition_for_record_missing(media, delete_targets, lookup)
+                    ai_resource_candidates = ai_result["candidates"]
+                    ai_resource_state = ai_result["state"]
+                    ai_resource_message = ai_result["message"]
             elif self._config.get("ai_suggestions"):
                 ai_resource_state = "ai_unavailable"
                 ai_resource_message = self._ai_agent_status()[1]
@@ -2142,11 +2156,37 @@ class MediaLibraryKeeper(_PluginBase):
                 })
         return candidates
 
+    def _resolve_batch_ai(self, items: List[Dict[str, Any]], lookup: dict) -> None:
+        jobs = lookup.get("ai_jobs") or []
+        if not jobs:
+            return
+        pending = [item for item in items if item.get("ai_resource_state") == "pending"]
+        if len(pending) != len(jobs):
+            raise RuntimeError("AI识别条目与任务数量不一致，停止生成批次")
+        started = monotonic()
+        # Bound concurrency to avoid overloading the configured AI provider.
+        # Results are attached in input order, and never become delete targets.
+        with ThreadPoolExecutor(max_workers=min(3, len(jobs))) as executor:
+            futures = [executor.submit(self._recognize_ai_candidates, media, candidates)
+                       for media, candidates in jobs]
+            for item, future in zip(pending, futures):
+                try:
+                    result = future.result()
+                except Exception as err:
+                    result = {"state": "ai_failed", "message": f"AI识别失败：{err}", "candidates": []}
+                item["ai_resource_candidates"] = result["candidates"]
+                item["ai_resource_state"] = result["state"]
+                item["ai_resource_message"] = result["message"]
+        logger.info(f"媒体库管家批次 AI 识别耗时：items={len(jobs)}，seconds={monotonic()-started:.2f}")
+
     def _ai_resource_recognition_for_record_missing(self, media: Dict[str, Any], targets: List[Dict[str, Any]], lookup: Optional[dict] = None) -> Dict[str, Any]:
         source_candidates = self._source_file_candidates_from_directory_mapping(media, targets, lookup)
         if not source_candidates:
             logger.info(f"媒体库管家 AI资源任务识别：title={media.get('title')}，未找到可交给 AI 判断的疑似源文件")
             return {"state": "no_source_candidates", "message": "无疑似源文件", "candidates": []}
+        return self._recognize_ai_candidates(media, source_candidates)
+
+    def _recognize_ai_candidates(self, media: Dict[str, Any], source_candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
         ai_selected, error = self._select_source_candidates_with_ai(media, source_candidates)
         if error:
             return {"state": "ai_failed", "message": f"AI识别失败：{error}", "candidates": []}
@@ -2208,7 +2248,7 @@ class MediaLibraryKeeper(_PluginBase):
 
     def _select_source_candidates_with_ai(self, media: Dict[str, Any], candidates: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], str]:
         try:
-            response_text = self._run_async(self._ask_llm_for_source_candidates(media, candidates))
+            response_text = self._run_async(asyncio.wait_for(self._ask_llm_for_source_candidates(media, candidates), timeout=45))
             selected = self._parse_ai_candidate_response(response_text, candidates)
         except Exception as err:
             error = self._clean_text(err)

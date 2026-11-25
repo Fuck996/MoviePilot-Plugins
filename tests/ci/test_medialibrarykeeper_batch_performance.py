@@ -3,6 +3,8 @@ import ast
 import logging
 import threading
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
+from time import monotonic, sleep
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,6 +21,7 @@ def _load_methods():
         "_enrich_download_tasks_from_configured_downloaders", "_expand_related_download_tasks",
         "_dedupe_download_tasks", "_batch_directory_children",
         "_query_download_history_by_path", "_batch_directory_mappings", "_fileitem_from_storage_path", "_media_file_paths",
+        "_resolve_batch_ai",
     }
     cls.bases = []
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
@@ -130,3 +133,48 @@ def test_directory_mappings_and_file_items_cached_per_batch():
     p._fileitem_from_storage_path(storage, "remote", "/a.mkv", lookup)
     p._fileitem_from_storage_path(storage, "local", "/a.mkv", {})
     assert len(calls) == 4
+
+
+def test_ai_batch_bounded_parallelism_order_and_no_new_deletion_targets():
+    cls, _ = _load_methods()
+    p = cls()
+    lock = threading.Lock()
+    barrier = threading.Barrier(3)
+    active = 0
+    peak = 0
+
+    def recognize(media, candidates):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            # All three requests must run together; a sequential implementation
+            # fails rather than relying on brittle elapsed-time thresholds.
+            if media["id"] < 3:
+                barrier.wait(timeout=3)
+            if media["id"] == 1:
+                raise RuntimeError("test failure")
+            return {"state": "selected", "message": "ok", "candidates": candidates}
+        finally:
+            with lock:
+                active -= 1
+
+    p._recognize_ai_candidates = recognize
+    items = [{"media_id": i, "ai_resource_state": "pending", "delete_targets": [{"path": f"/media/{i}"}]}
+             for i in range(7)]
+    items.insert(1, {"media_id": "existing", "ai_resource_state": "selected", "ai_resource_candidates": ["existing"]})
+    original_targets = [item.get("delete_targets") for item in items]
+    jobs = [({"id": i}, [{"source_path": f"/source/{i}"}]) for i in range(7)]
+    p._resolve_batch_ai(items, {"ai_jobs": jobs})
+    assert peak == 3
+    assert [item.get("delete_targets") for item in items] == original_targets
+    assert items[1]["ai_resource_candidates"] == ["existing"]
+    for item in items:
+        i = item["media_id"]
+        if i == "existing":
+            continue
+        if i == 1:
+            assert item["ai_resource_state"] == "ai_failed" and item["ai_resource_candidates"] == []
+        else:
+            assert item["ai_resource_candidates"] == [{"source_path": f"/source/{i}"}]
